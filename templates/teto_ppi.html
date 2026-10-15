@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Teto PPI Varginha{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('green', 'PPI Assistencial', 'Teto PPI Varginha', '<path d="M4 4h16v16H4zM4 9h16M9 9v11M14 13h3M14 16h3"></path>') %}Monta a planilha mensal do teto: consulta o PPI com Foco <b>Atendimento</b> = 317070 - Varginha, discriminado por Gestão/Município Origem — subgrupos 0203 e 0202 e os procedimentos {{ procedimentos|join(', ') }}.{% endcall %}
+
+{% if not motor %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div>O motor do PPI (gerar_ppi) não foi encontrado — a consulta não vai funcionar.</div></div>
+{% endif %}
+
+<div class="cartao">
+  <h2>Gerar planilha do mês</h2>
+  {% if info.tem_modelo %}
+  <form method="post" action="{{ url_for('teto_ppi_gerar') }}" class="mt-s" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    {% if publicadas %}
+    <div class="campo"><label>Competência</label><select name="competencia">{% for c in publicadas %}<option value="{{ c }}" {{ 'selected' if c == competencia }}>{{ c[:4] }}/{{ c[4:] }}{{ ' (mais recente)' if loop.first }}</option>{% endfor %}</select></div>
+    {% else %}
+    <div class="campo"><label>Competência (AAAAMM)</label><input type="text" name="competencia" value="{{ competencia }}" pattern="\d{6}" maxlength="6" required></div>
+    {% endif %}
+    <button class="btn primario" type="submit">Puxar do PPI e gerar</button>
+  </form>
+  <p class="dim mt-s" style="font-size:12.5px">Leva cerca de meio minuto. As abas ShiftAP e ShiftColpo (limites do Shift) vêm da planilha-modelo; as demais são preenchidas com os dados do PPI e as fórmulas recalculam ao abrir no Excel.</p>
+  {% else %}
+  <div class="aviso mt-s" style="margin-bottom:0"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div>Envie antes a planilha do mês anterior (abaixo) — ela serve de modelo.</div></div>
+  {% endif %}
+</div>
+
+{% if info.gerados %}
+<div class="cartao mt">
+  <h2>Planilhas geradas</h2>
+  <div class="arquivos mt-s">
+    {% for a in info.gerados %}
+    <a href="{{ url_for('teto_ppi_arquivo', nome=a.nome) }}"><span class="tipo">XLSX</span>{{ a.nome }}<small>{{ a.em | dataarq }}</small></a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="cartao mt">
+  <h2>Planilha-modelo</h2>
+  <p class="dim">{% if info.tem_modelo %}Modelo atual enviado em {{ info.modelo_em | dataarq }}.{% else %}Nenhum modelo ainda.{% endif %}
+    Quando os limites do Shift mudarem, envie a planilha mais recente para eles virem nas próximas.</p>
+  <form method="post" action="{{ url_for('teto_ppi_modelo') }}" enctype="multipart/form-data" class="mt-s" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="file" name="arquivo" accept=".xlsx" required>
+    <button class="btn" type="submit">Enviar modelo</button>
+  </form>
+</div>
+
+{% if jobs %}
+<div class="cartao mt">
+  <h2>Execuções recentes</h2>
+  <div class="arquivos mt-s">
+    {% for j in jobs %}
+    <a href="{{ url_for('ver_job', job_id=j.id) }}"><span class="tipo">{{ j.feito }}/{{ j.total }}</span>{{ j.titulo }}<small>{{ j.status }} · {{ j.criado_em }}</small></a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

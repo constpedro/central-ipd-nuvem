@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block titulo %}Início{% endblock %}
+{% block conteudo %}
+
+{% if not motor_ok %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>
+<div>Não encontrei a pasta <code>gerar_ppi</code> em <code>{{ gerar_ppi_dir }}</code>. Ajuste <code>GERAR_PPI_DIR</code> em <code>config.py</code>.</div></div>
+{% endif %}
+
+{% if metas.n_abaixo or metas.n_atencao %}
+<a class="aviso" href="{{ url_for('metas_pagina') }}" style="text-decoration:none">
+<svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path></svg>
+<div><strong>{% if metas.n_abaixo %}{{ metas.n_abaixo }} município(s) abaixo da meta{% endif %}{% if metas.n_abaixo and metas.n_atencao %} · {% endif %}{% if metas.n_atencao %}{{ metas.n_atencao }} em atenção{% endif %}</strong>
+ no SISCAN × PPI (acumulado do ano). Ver situação das metas →</div></a>
+{% endif %}
+
+{% set rodando = jobs | selectattr('status', 'equalto', 'rodando') | list %}
+<div class="kpis">
+  <div class="kpi"><small>PDFs na pasta de saída</small><strong>{{ n_pdfs }}</strong></div>
+  {% if not nuvem %}<div class="kpi"><small>Listas de consórcios</small><strong>{{ listas|length }}</strong></div>
+  <div class="kpi"><small>Relatórios de consórcio</small><strong>{{ n_consorcios }}</strong></div>{% endif %}
+  <div class="kpi"><small>Exames na tabela</small><strong>{{ '{:,}'.format(tabela_info['itens']|length).replace(',', '.') if tabela_info else '—' }}</strong></div>
+  {% if jobs_ativos %}<a class="kpi" href="{{ url_for('ver_job', job_id=jobs_ativos[0].id) }}" style="text-decoration:none;color:inherit"><small>Fila · ver progresso</small><strong>{{ jobs_ativos|length }} <span class="dim" style="font-size:12px;font-weight:400">{{ 'rodando' if jobs_ativos|length == 1 else 'ativos' }}</span></strong></a>
+  {% else %}<div class="kpi"><small>Fila</small><strong>livre</strong></div>{% endif %}
+</div>
+
+<div class="secao">Áreas
+  <button type="button" class="btn-personalizar" id="btn-personalizar" title="Escolher quais áreas aparecem aqui — o menu lateral continua com todas">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg><span>Personalizar</span></button>
+</div>
+<p class="dica-personalizar" id="dica-personalizar">Clique nas áreas para mostrar ou ocultar na tela inicial. O menu lateral continua com todas.</p>
+<div class="areas">
+
+  <a href="{{ url_for('relatorios') }}" data-area="relatorios" class="area">
+    <span class="icone brand"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r=".8"></circle></svg></span>
+    <div><h2>Relatórios PPI / SISCAN</h2><p>PDFs por lista de consórcio ou por cidade.</p></div>
+    <div class="acao"><small>{{ n_pdfs }} PDFs</small><span class="btn">Gerar</span></div>
+  </a>
+
+  <a href="{{ url_for('fila') }}" data-area="fila" class="area">
+    <span class="icone brand"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg></span>
+    <div><h2>Fila de relatórios</h2><p>O que está rodando, na fila e já terminado, com os PDFs.</p></div>
+    <div class="acao">{% if jobs_ativos %}<small>{{ jobs_ativos|length }} {{ 'ativo' if jobs_ativos|length == 1 else 'ativos' }}</small>{% else %}<small>livre</small>{% endif %}<span class="btn">Ver</span></div>
+  </a>
+
+{% if not nuvem %}  <a href="{{ url_for('metas_pagina') }}" data-area="metas_pagina" class="area">
+    <span class="icone green"><svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path></svg></span>
+    <div><h2>Situação das metas</h2><p>Produção SISCAN do mês contra a meta mensal do PPI.</p></div>
+    <div class="acao"><span class="btn">Ver</span></div>
+  </a>
+{% endif %}
+
+{% if not nuvem %}  <a href="{{ url_for('teto_ppi_pagina') }}" data-area="teto_ppi_pagina" class="area">
+    <span class="icone green"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11M14 13h3M14 16h3"></path></svg></span>
+    <div><h2>Teto PPI Varginha</h2><p>Puxa do PPI a planilha mensal do teto com atendimento em Varginha.</p></div>
+    <div class="acao"><span class="btn">Gerar</span></div>
+  </a>
+{% endif %}
+
+{% if not nuvem %}  <a href="{{ url_for('consorcios_pagina') }}" data-area="consorcios_pagina" class="area">
+    <span class="icone blue"><svg class="ic" viewBox="0 0 24 24"><path d="M3 20h18M5 20v-8M12 20V7M19 20V3"></path></svg></span>
+    <div><h2>Relatório por consórcio</h2><p>Planilha de produção dos municípios do consórcio.</p></div>
+    <div class="acao"><small>{{ listas|length }} listas</small><span class="btn">Montar</span></div>
+  </a>
+{% endif %}
+
+  <a href="{{ url_for('propostas_pagina') }}" data-area="propostas_pagina" class="area">
+    <span class="icone plum"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h6"></path></svg></span>
+    <div><h2>Propostas comerciais</h2><p>Catálogo numerado e geração a partir do template.</p></div>
+    <div class="acao"><span class="btn">Abrir</span></div>
+  </a>
+
+  <a href="{{ url_for('tabelas_pagina') }}" data-area="tabelas_pagina" class="area">
+    <span class="icone green"><svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"></path></svg></span>
+    <div><h2>Tabelas de preço e conferência</h2><p>Consulta de exames e conferência de arquivos.</p></div>
+    <div class="acao">{% if tabela_info %}<small>{{ tabela_info['itens']|length }} exames</small>{% else %}<small class="dim">não importada</small>{% endif %}<span class="btn">Consultar</span></div>
+  </a>
+
+{% if not nuvem %}  <a href="{{ url_for('crm_pagina') }}" data-area="crm_pagina" class="area">
+    <span class="icone blue"><svg class="ic" viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h10v4H4zM4 17h6v3H4z"></path></svg></span>
+    <div><h2>CRM · GesMkt</h2><p>Cards de renovação do mês, avulsos e troca de responsável.</p></div>
+    <div class="acao"><span class="btn">Abrir</span></div>
+  </a>
+{% endif %}
+
+{% if not nuvem %}  <a href="{{ url_for('padronizar_pagina') }}" data-area="padronizar_pagina" class="area">
+    <span class="icone brand"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z"></path></svg></span>
+    <div><h2>Padronizar arquivo</h2><p>Planilha com logo, cabeçalho vermelho e formatação IPD.</p></div>
+    <div class="acao"><span class="btn">Enviar</span></div>
+  </a>
+{% endif %}
+
+{% if not nuvem %}  <a href="{{ url_for('mapa3d_pagina') }}" data-area="mapa3d_pagina" class="area destaque">
+    <span class="icone teal"><svg class="ic" viewBox="0 0 24 24"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"></path><path d="M9 4v13M15 7v13"></path></svg></span>
+    <div><h2>Mapa 3D</h2><p>Municípios de Minas com PPI, SISCAN e população em 3D.</p></div>
+    <div class="acao"><span class="btn">Explorar</span></div>
+  </a>
+{% endif %}
+
+</div>
+
+<p class="areas-vazio" id="areas-vazio">Nenhuma área escolhida para a tela inicial. Use <b>Personalizar</b> ou o menu lateral.</p>
+<script>
+// aplica já, antes de pintar, para não "piscar" as áreas ocultas
+(function () {
+  let ocultas = [];
+  try { ocultas = JSON.parse(localStorage.getItem('areasOcultas') || '[]'); } catch (e) {}
+  document.querySelectorAll('.areas .area[data-area]').forEach(a => a.classList.toggle('oculta', ocultas.includes(a.dataset.area)));
+})();
+</script>
+
+{% if jobs %}
+<div class="secao mt">Últimos trabalhos</div>
+<div class="cartao" style="padding:0">
+  <div class="rolagem"><table class="dados cel-cartoes" data-filtro>
+    <tr><th>Trabalho</th><th>Situação</th><th class="n">Progresso</th><th>Criado</th><th></th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td class="cel-cheio cel-n1">{{ j.titulo }}</td>
+      <td class="cel-n2"><span class="st {{ 'ok' if j.status == 'concluído' else ('erro' if j.status in ('erro', 'cancelado', 'interrompido') else 'run') }}">{{ j.status }}</span></td>
+      <td class="n cel-esconde">{% if j.proposta %}<span class="dim">proposta</span>{% else %}{{ j.feito }}/{{ j.total }}{% endif %}</td>
+      <td class="dim cel-n3">{{ j.criado_em }}</td>
+      <td class="a cel-n4 cel-direita">{% if j.editar %}<a href="{{ j.editar }}" class="btn pequeno">Editar</a> {% endif %}<a href="{{ j.link }}" class="btn pequeno"{% if j.proposta %} target="_blank"{% endif %}>Abrir</a></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

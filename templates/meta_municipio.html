@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block titulo %}{{ d.cidade }} · metas{% endblock %}
+{% block crumb %}<a href="{{ url_for('metas_pagina', consorcio=request.args.get('consorcio')) }}">Situação das metas</a> / <b>{{ d.cidade }}</b>{% endblock %}
+{% block acoes_topo %}
+<a class="btn" href="{{ url_for('metas_pagina', consorcio=request.args.get('consorcio')) }}">← Voltar às metas</a>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Situação das metas', d.cidade, '<path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path>') %}Produção de citologia no SISCAN mês a mês contra a meta mensal do PPI ({{ 'soma dos 7 códigos' if d.regra == 'todos' else 'códigos 019 + 086' }}, qtd anual ÷ 12). SISCAN atualizado em {{ d.atualizacao or '—' }}{% if d.competencia_ppi %} · PPI competência {{ d.competencia_ppi[4:] }}/{{ d.competencia_ppi[:4] }}{% endif %}.{% endcall %}
+
+<form method="post" action="{{ url_for('meta_regra', slug=d.slug, consorcio=request.args.get('consorcio')) }}" class="cartao" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <label for="regra" style="font-size:13px;font-weight:600">Meta deste município</label>
+  <select id="regra" name="regra" onchange="this.form.submit()" {{ 'disabled' if not d.tem_procedimentos }}>
+    {% for k, nome in d.regras.items() %}<option value="{{ k }}" {{ 'selected' if d.regra_escolhida == k }}>{{ nome }}</option>{% endfor %}
+  </select>
+  <span class="dim" style="font-size:12.5px">{% if not d.tem_procedimentos %}Para escolher "todos os códigos", rode o relatório SISCAN desta cidade de novo (guarda os procedimentos do PPI).{% elif d.regra == 'todos' %}Soma 019, 022, 043, 065, 073, 081 e 086.{% else %}Soma só 019 e 086, como no relatório.{% endif %}</span>
+  <noscript><button class="btn" type="submit">Salvar</button></noscript>
+</form>
+
+{% if d.picos %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>
+<div><strong>Pico atípico: {{ d.picos|join(', ') }}.</strong> Mês muito acima do normal da cidade (mais de 5× a mediana e 5× a meta), em geral exames represados lançados de uma vez no SISCAN. Fica <strong>fora do acumulado e da média</strong>; vale conferir com o município ou o laboratório.</div></div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><small>Acumulado {{ d.ano }} ({{ d.meses_ano }} meses)</small><strong>{{ d.acumulado }} <span class="dim" style="font-size:12px;font-weight:400">de {{ '%.0f'|format(d.meta_acumulada) }} · {{ '%.0f'|format(d.pct) }}%</span></strong></div>
+  <div class="kpi"><small>Meta mensal</small><strong>{{ '%.0f'|format(d.meta) }}</strong></div>
+  <div class="kpi"><small>Média no período{{ ' (sem pico)' if d.picos }}</small><strong>{{ '%.0f'|format(d.media) }} <span class="dim" style="font-size:12px;font-weight:400">{{ '%.0f'|format(d.pct_media) }}%</span></strong></div>
+  <div class="kpi"><small>{{ d.mes }} (último mês)</small><strong>{{ d.qtd }} <span class="dim" style="font-size:12px;font-weight:400">{{ '%.0f'|format(d.pct_mes) }}% da meta</span></strong>{% if d.mes_zerado %}<small>mês zerado — conferir digitação</small>{% endif %}</div>
+  <div class="kpi"><small>Situação no ano</small><strong>
+    {% if d.classe == 'ok' %}<span class="chip ok">Na meta</span>{% elif d.classe == 'atencao' %}<span class="chip">Atenção</span>{% else %}<span class="chip erro">Abaixo</span>{% endif %}
+  </strong>{% if d.seguidos >= 2 %}<small>{{ d.seguidos }} meses seguidos abaixo</small>{% endif %}</div>
+</div>
+
+<div class="cartao mt">
+  <div class="entre"><h2>Produção mensal × meta</h2>
+    <div class="dim" style="font-size:12px;display:flex;gap:14px;flex-wrap:wrap">
+      {% for f in d.faixas %}<span><i class="leg f{{ loop.index }}"></i>{{ f.nome }}</span>{% endfor %}
+      <span><i class="leg linha"></i>Meta mensal</span>
+      <span><i class="leg linha media"></i>Produção total</span>
+    </div>
+  </div>
+  <div id="grafico" class="mt-s"></div>
+  <p class="dim" style="font-size:11.5px;margin-top:4px">Colunas divididas pelo prazo do resultado no SISCAN (Interv Resultado). O selo sob cada mês é o % da meta: <span style="color:var(--green)">verde</span> na meta, <span style="color:var(--amber)">amarelo</span> atenção, <span style="color:var(--brand)">vermelho</span> abaixo.</p>
+  <div class="faixas mt-s">
+    {% set tot = d.faixas|sum(attribute='total') %}
+    {% for f in d.faixas %}
+    <div class="faixa"><i class="leg f{{ loop.index }}"></i><span>{{ f.nome }}</span><strong>{{ f.total }}</strong><small>{{ '%.0f'|format(f.total / tot * 100 if tot else 0) }}%</small></div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="secao mt">PPI · procedimentos de citologia (0203)</div>
+<div class="cartao">
+  {% if d.procedimentos %}
+  <div class="rolagem"><table class="dados">
+    <thead><tr><th>Código</th><th>Procedimento</th><th>Executante</th><th class="a">Qtd anual</th><th class="a">Qtd/mês</th><th class="a">Valor anual</th></tr></thead>
+    <tbody>
+    {% for p in d.procedimentos %}
+    <tr>
+      <td>{{ p.codigo }}{% if p.na_meta %} <span class="chip neutro" title="Entra no cálculo da meta">meta</span>{% endif %}</td>
+      <td>{{ p.nome }}</td>
+      <td>{{ p.municipio_atendimento }}</td>
+      <td class="a">{{ '%.0f'|format(p.qtd_anual) }}</td>
+      <td class="a">{{ '%.1f'|format(p.qtd_anual / 12) }}</td>
+      <td class="a">{{ p.valor_anual|moeda if p.valor_anual is not none else '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="dim">Os procedimentos do PPI desta cidade ainda não estão guardados. Eles aparecem na próxima vez que o relatório SISCAN dela rodar.</p>
+  {% endif %}
+</div>
+
+<div class="secao mt">Relatórios já gerados</div>
+<div class="cartao">
+  {% if d.pdfs %}
+  <div class="arquivos">
+    {% for a in d.pdfs %}
+    <div class="arq"><a href="{{ url_for('abrir_saida', nome=a) }}" target="_blank"><span class="tipo">PDF</span><span class="nm">{{ a }}</span></a></div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="dim">Nenhum PDF desta cidade na pasta de saída.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.leg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.leg.linha { height: 0; border-top: 2px dashed var(--ink-2); border-radius: 0; width: 16px; vertical-align: 3px; }
+.leg.linha.media { border-top: 2px solid var(--blue, #3b6fb6); }
+.leg.f1 { background: #3f8f63; } .leg.f2 { background: #9cc3a6; } .leg.f3 { background: #d9a441; } .leg.f4 { background: #c0392b; }
+.faixas { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.faixa { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 12.5px; color: var(--ink-2); }
+.faixa strong { margin-left: auto; color: var(--ink); }
+.faixa small { color: var(--ink-3); min-width: 30px; text-align: right; }
+#grafico svg { width: 100%; height: auto; display: block; }
+#grafico text { font-size: 11px; fill: var(--ink-3); }
+</style>
+<script>
+(function () {
+  const serie = {{ d.serie|tojson }};
+  const meta = {{ d.meta|tojson }};
+  const faixas = {{ d.faixas|tojson }};
+  const corFaixa = ['#3f8f63', '#9cc3a6', '#d9a441', '#c0392b'];
+  const corSit = {ok: 'var(--green)', atencao: 'var(--amber)', abaixo: 'var(--brand)'};
+  const W = 760, H = 320, m = {t: 18, r: 64, b: 52, l: 44};
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  // O pico atípico não define a escala: a coluna dele é cortada no topo.
+  const normais = serie.filter(s => !s.pico).map(s => s.qtd);
+  const maxV = Math.max(meta, ...normais) * 1.3 || 1;
+  const yy0 = v => m.t + ih - Math.min(v, maxV) / maxV * ih;
+  const passo = iw / serie.length, larg = Math.min(46, passo * 0.6);
+  const y = yy0;
+  const x = i => m.l + passo * i + passo / 2;
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Produção mensal por prazo e meta">' +
+    '<defs><pattern id="hach" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="var(--ink-3)" stroke-width="1.2" opacity=".5" /></pattern></defs>';
+  for (let k = 0; k <= 4; k++) {
+    const v = maxV / 4 * k, yy = y(v);
+    s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" />';
+    s += '<text x="' + (m.l - 6) + '" y="' + (yy + 4) + '" text-anchor="end">' + Math.round(v) + '</text>';
+  }
+  serie.forEach((p, i) => {
+    // Colunas empilhadas por faixa de prazo; se o mês não tiver a divisão, uma coluna só.
+    const partes = faixas.map((f, k) => ({nome: f.nome, v: (p.faixas || {})[f.chave] || 0, cor: corFaixa[k]}));
+    const soma = partes.reduce((a, b) => a + b.v, 0);
+    const pilha = soma ? partes : [{nome: 'Total', v: p.qtd, cor: 'var(--ink-3)'}];
+    const dica = p.mes + ': ' + p.qtd + ' (' + p.pct + '% da meta)&#10;' + pilha.map(q => q.nome + ': ' + q.v).join('&#10;');
+    let base = 0;
+    s += '<g><title>' + dica + '</title>';
+    pilha.forEach(q => {
+      if (!q.v) return;
+      const y1 = y(base + q.v), y0 = y(base);
+      s += '<rect x="' + (x(i) - larg / 2) + '" y="' + y1 + '" width="' + larg + '" height="' + Math.max(y0 - y1 - 1, 1) + '" fill="' + q.cor + '"' + (p.pico ? ' opacity=".35"' : '') + ' />';
+      base += q.v;
+    });
+    s += '</g>';
+    if (p.pico) {
+      const yt = y(p.qtd);
+      s += '<rect x="' + (x(i) - larg / 2) + '" y="' + yt + '" width="' + larg + '" height="' + (m.t + ih - yt) + '" fill="url(#hach)" stroke="var(--ink-3)" stroke-dasharray="3 3" />';
+      s += '<text x="' + x(i) + '" y="' + (yt + 44) + '" text-anchor="middle" style="fill:var(--ink-2);font-size:10.5px;font-weight:600">pico</text>';
+    }
+    s += '<text x="' + x(i) + '" y="' + (H - m.b + 16) + '" text-anchor="middle">' + p.mes + '</text>';
+    s += '<rect x="' + (x(i) - 19) + '" y="' + (H - m.b + 23) + '" width="38" height="17" rx="8.5" fill="' + corSit[p.classe] + '" />';
+    s += '<text x="' + x(i) + '" y="' + (H - m.b + 35) + '" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:10.5px">' + p.pct + '%</text>';
+    s += '<text x="' + x(i) + '" y="' + (y(p.qtd) - 8) + '" text-anchor="middle" style="fill:var(--ink-2);font-weight:600">' + (p.qtd > maxV ? '↑ ' : '') + p.qtd + '</text>';
+  });
+  s += '<polyline fill="none" stroke="var(--blue, #3b6fb6)" stroke-width="2" points="' + serie.map((p, i) => x(i) + ',' + y(p.qtd)).join(' ') + '" />';
+  serie.forEach((p, i) => { s += '<circle cx="' + x(i) + '" cy="' + y(p.qtd) + '" r="3.5" fill="var(--surface)" stroke="var(--blue, #3b6fb6)" stroke-width="2" />'; });
+  const ym = y(meta);
+  s += '<line x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + ym + '" y2="' + ym + '" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="6 4" />';
+  // Rótulo na margem direita, fora das colunas, para nunca ficar escondido.
+  s += '<text x="' + (W - m.r + 6) + '" y="' + (ym - 2) + '" style="fill:var(--ink-2);font-weight:600">Meta</text>';
+  s += '<text x="' + (W - m.r + 6) + '" y="' + (ym + 11) + '" style="fill:var(--ink-2)">' + Math.round(meta) + '/mês</text>';
+  document.getElementById('grafico').innerHTML = s + '</svg>';
+})();
+</script>
+{% endblock %}

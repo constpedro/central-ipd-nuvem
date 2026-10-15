@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block titulo %}Mapa 3D{% endblock %}
+{% block crumb %}<b>Mapa 3D</b>{% endblock %}
+
+{% block conteudo %}
+{% set desatualizado = info.dados_em and info.planilha_em and info.planilha_em > info.dados_em %}
+
+<section class="m3d-hero">
+  <div class="m3d-texto">
+    <span class="m3d-kicker">Minas Gerais em três dimensões</span>
+    <h1>Mapa 3D</h1>
+    <p>Municípios de Minas com a PPI por consórcio, a produção do SISCAN e a população do IBGE — gire, aproxime e compare.</p>
+    {% if info.instalado %}
+    <a class="m3d-abrir" href="/mapa3d/" target="_blank" rel="noopener">
+      Abrir o mapa
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+    <small class="m3d-meta">Dados de {{ info.dados_em | dataarq if info.dados_em else '—' }}
+      {% if desatualizado %}· <a href="#tecnico" onclick="document.getElementById('tecnico').open = true">planilha tem dados novos</a>{% endif %}</small>
+    {% else %}
+    <p class="m3d-meta">O mapa ainda não foi gerado — use “Atualizar dados do mapa” nas opções técnicas abaixo.</p>
+    {% endif %}
+  </div>
+
+  <svg class="m3d-arte" viewBox="0 0 320 220" aria-hidden="true">
+    <g class="m3d-piso"><path d="M160 216 L292 150 L160 84 L28 150 Z"></path></g>
+    {% for x, y, h, d in [(160,102,45,0), (122,121,95,1), (198,121,70,2), (84,140,55,3), (160,140,120,4), (236,140,40,5), (122,159,85,6), (198,159,60,7), (160,178,75,8)] %}
+    <g class="m3d-col" style="--d:{{ d }}; transform-origin: {{ x }}px {{ y }}px">
+      <path class="lado-e" d="M{{ x-15 }} {{ y-7 }} L{{ x }} {{ y }} L{{ x }} {{ y-h }} L{{ x-15 }} {{ y-7-h }} Z"></path>
+      <path class="lado-d" d="M{{ x }} {{ y }} L{{ x+15 }} {{ y-7 }} L{{ x+15 }} {{ y-7-h }} L{{ x }} {{ y-h }} Z"></path>
+      <path class="topo" d="M{{ x-15 }} {{ y-7-h }} L{{ x }} {{ y-h }} L{{ x+15 }} {{ y-7-h }} L{{ x }} {{ y-14-h }} Z"></path>
+    </g>
+    {% endfor %}
+  </svg>
+</section>
+
+<details class="m3d-tecnico" id="tecnico" {{ 'open' if not info.instalado }}>
+  <summary>Opções técnicas{% if desatualizado %} <span class="m3d-alerta">dados novos na planilha</span>{% endif %}</summary>
+  <div class="m3d-tec-corpo">
+    <form method="post" action="{{ url_for('mapa3d_atualizar') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <h3>Atualizar dados do mapa</h3>
+      <p>Relê a planilha consolidada, atualiza o mapa e gera de novo o arquivo de apresentação. Leva menos de um minuto.</p>
+      <p class="dim">Planilha: <span class="mono">{{ info.planilha }}</span>{% if info.planilha_em %} · alterada em {{ info.planilha_em | dataarq }}{% else %} · <strong>não encontrada</strong>{% endif %}</p>
+      {% if info.projeto_ok %}
+      <p class="mt-s"><button class="btn" type="submit">Atualizar dados do mapa</button></p>
+      {% else %}
+      <div class="vazio mt-s">Projeto do mapa não encontrado em Downloads\minas-3d.</div>
+      {% endif %}
+    </form>
+    {% if info.instalado %}
+    <div>
+      <h3>Arquivo para apresentação</h3>
+      <p>Abre com dois cliques, sem internet.</p>
+      <p class="dim"><span class="mono">{{ info.arquivo_unico }}</span>{% if info.arquivo_unico_em %} · {{ info.arquivo_unico_em | dataarq }}{% endif %}</p>
+    </div>
+    {% endif %}
+    {% if jobs %}
+    <div class="m3d-hist">
+      <h3>Atualizações recentes</h3>
+      <div class="arquivos mt-s">
+        {% for j in jobs %}
+        <a href="{{ url_for('ver_job', job_id=j.id) }}"><span class="tipo">{{ j.feito }}/{{ j.total }}</span>{{ j.titulo }}<small>{{ j.status }} · {{ j.criado_em }}</small></a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</details>
+{% endblock %}

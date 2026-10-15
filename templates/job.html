@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block titulo %}Trabalho{% endblock %}
+{% block crumb %}{{ job.titulo }}{% endblock %}
+{% block acoes_topo %}
+{% if job.status in ('na fila', 'rodando') %}
+<form method="post" action="{{ url_for('cancelar_job', job_id=job.id) }}" id="form-cancelar" style="display:inline"
+      onsubmit="return confirm('Cancelar esta rodada? Os PDFs já gerados ficam na pasta.')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <button class="btn" type="submit">Cancelar rodada</button>
+</form>
+{% endif %}
+{% if job.tipo == 'crm' %}
+<a class="btn" href="{{ url_for('crm_pagina') }}">Voltar ao CRM</a>
+{% elif job.tipo == 'teto_ppi' %}
+<a class="btn" href="{{ url_for('teto_ppi_pagina') }}">Voltar ao Teto PPI</a>
+{% else %}
+<button class="btn" onclick="abrirPasta('saida')">Abrir pasta de saída</button>
+<a class="btn" href="{{ url_for('fila') }}">Ver fila</a>
+<a class="btn" href="{{ url_for('relatorios') }}">Nova rodada</a>
+{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Trabalho · ' ~ job.criado_em, job.titulo, '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>') %}{% if job.tipo == 'teto_ppi' %}Uma consulta ao PPI por subgrupo e por procedimento; no fim a planilha é montada.{% elif job.tipo == 'crm' %}Cada empresa aparece abaixo conforme o CRM responde; o registro completo fica em “Detalhes técnicos”.{% else %}Acompanhe o andamento por cidade; os arquivos saem na pasta de saída conforme ficam prontos.{% endif %}{% endcall %}
+<div class="cartao" id="painel" data-id="{{ job.id }}" data-tipo="{{ job.tipo }}">
+  <div class="job-topo">
+    <span class="agora" id="status">
+      <i id="pulso"></i><span id="status-texto">{{ 'Gerando…' if job.status == 'rodando' else job.status }}</span>
+      <small id="status-detalhe"></small>
+    </span>
+    <span class="resumo" id="resumo"></span>
+  </div>
+  <div class="barra"><i id="progresso" style="width: {{ job.percentual }}%"></i></div>
+  <div class="prog-legenda">
+    <span id="contagem">{{ job.feito }} / {{ job.total }} · <span id="duracao">{{ job.duracao }}</span></span>
+    <span class="dim">a fila roda um trabalho de cada vez</span>
+  </div>
+  <p class="dica" style="margin-top:10px">Você pode fechar esta página ou usar o resto do sistema — o trabalho continua rodando e fica sempre disponível em "Fila de relatórios", no menu.</p>
+</div>
+
+<div id="resultado" class="mt" hidden></div>
+
+<div id="bloco-cidades" hidden>
+  <div class="secao mt">{{ 'Cards' if job.tipo == 'crm' else ('Etapas' if job.tipo == 'teto_ppi' else 'Cidades') }} <span id="cidades-legenda"></span></div>
+  <div class="filtros-cid" id="filtros"></div>
+  <div class="cidades" id="cidades"></div>
+</div>
+
+<details class="det mt">
+  <summary>Detalhes técnicos <span>para quando algo dá errado</span></summary>
+  <div class="cont"><pre class="log" id="log">{{ job.log|join('\n') }}</pre></div>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const painel = document.getElementById('painel');
+  const id = painel.dataset.id, tipo = painel.dataset.tipo;
+  const log = document.getElementById('log');
+  let desde = {{ job.n_log }};
+  let parado = false;
+  let filtro = 'todas', ultimos = null;
+  document.getElementById('filtros').addEventListener('click', function (e) {
+    const b = e.target.closest('button'); if (!b) return;
+    filtro = b.dataset.f; if (ultimos) mostrarCidades(ultimos);
+  });
+
+  function moeda(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function esc(v) {
+    const el = document.createElement('span');
+    el.textContent = v == null ? '' : String(v);
+    return el.innerHTML;
+  }
+
+  const MARCA = {
+    ok: '<svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>',
+    erro: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    rodando: '<svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"/></svg>',
+    cancelada: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    espera: ''
+  };
+  const ROTULO = { ok: '', erro: 'falhou', rodando: 'consultando…', espera: 'na fila', cancelada: 'cancelada' };
+  const CRM = tipo === 'crm';
+
+  function tempo(s) {
+    s = Math.round(s);
+    return s >= 60 ? Math.floor(s / 60) + 'min ' + String(s % 60).padStart(2, '0') + 's' : s + ' s';
+  }
+
+  function mostrarCidades(itens) {
+    ultimos = itens;
+    const bloco = document.getElementById('bloco-cidades');
+    if (!itens || !itens.length) { bloco.hidden = true; return; }
+    bloco.hidden = false;
+    const cont = { ok: 0, erro: 0, rodando: 0, espera: 0 };
+    cont.ok = itens.filter(i => i.status === 'ok').length;
+    cont.erro = itens.filter(i => i.status === 'erro').length;
+    cont.rodando = itens.filter(i => i.status === 'rodando').length;
+    cont.espera = itens.filter(i => i.status === 'espera').length;
+
+    const partes = [];
+    if (cont.ok) partes.push('<span class="tot ok">' + cont.ok + ' pronta' + (cont.ok > 1 ? 's' : '') + '</span>');
+    if (cont.rodando) partes.push('<span class="tot run">' + cont.rodando + ' em andamento</span>');
+    if (cont.espera) partes.push('<span class="tot esp">' + cont.espera + ' na fila</span>');
+    if (cont.erro) partes.push('<span class="tot err">' + cont.erro + ' com erro</span>');
+    document.getElementById('resumo').innerHTML = partes.join('');
+
+    const emAndamento = itens.filter(i => i.status === 'rodando');
+    document.getElementById('status-detalhe').textContent = emAndamento.length > 1
+      ? '· ' + emAndamento.length + ' cidades ao mesmo tempo'
+      : emAndamento.length
+        ? '· ' + emAndamento[0].nome + ' (' + (itens.indexOf(emAndamento[0]) + 1) + 'ª de ' + itens.length + ')' : '';
+
+    document.getElementById('cidades-legenda').textContent = cont.ok + ' de ' + itens.length + ' concluídas';
+    const ABAS = [['todas', 'Todas', itens.length], ['rodando', 'Em andamento', cont.rodando],
+                  ['espera', 'Na fila', cont.espera], ['ok', 'Prontas', cont.ok], ['erro', 'Com erro', cont.erro]];
+    document.getElementById('filtros').innerHTML = ABAS.filter(a => a[0] === 'todas' || a[2]).map(a =>
+      '<button type="button" class="' + (filtro === a[0] ? 'ativo' : '') + '" data-f="' + a[0] + '">' + a[1] + ' <b>' + a[2] + '</b></button>').join('');
+    const ordem = { rodando: 0, erro: 1, espera: 2, ok: 3, cancelada: 4 };
+    const vis = itens.filter(i => filtro === 'todas' || i.status === filtro || (filtro === 'erro' && i.status === 'cancelada'))
+      .sort((a, b) => (ordem[a.status] ?? 5) - (ordem[b.status] ?? 5));
+    document.getElementById('cidades').innerHTML = vis.map(function (i) {
+      const detalhe = i.status === 'ok'
+        ? (CRM ? 'ok' : i.hora ? 'pronta às ' + i.hora : 'pronta')
+        : ROTULO[i.status] || '';
+      return '<div class="cid ' + i.status + '"><span class="m">' + (MARCA[i.status] || '') + '</span>' +
+             '<span class="nm" title="' + esc(i.nome) + '">' + esc(i.nome) + '</span><small>' + esc(detalhe) + '</small></div>';
+    }).join('');
+  }
+
+  function mostrarResultado(j) {
+    const box = document.getElementById('resultado');
+    const r = j.resultado || {};
+    let html = '';
+    if (j.status === 'cancelado') {
+      html = '<div class="aviso" style="margin:0">Rodada cancelada. ' + ((r.arquivos || []).length) + ' PDF(s) já gerados continuam na pasta.</div>';
+    } else if (j.status === 'interrompido') {
+      html = '<div class="aviso" style="margin:0">Trabalho interrompido: ' + esc(j.erro) + '. Os arquivos já gerados continuam na pasta; rode de novo para completar.</div>';
+    } else if (j.status === 'erro') {
+      html = '<div class="flash erro" style="margin:0">Deu erro: ' + esc(j.erro) + '</div>';
+    } else if (tipo === 'lote') {
+      const n = (r.arquivos || []).length;
+      html += '<div class="cartao"><div class="entre"><div><span class="chip ' + (r.faltando && r.faltando.length ? '' : 'ok') + '">' + n + ' PDF(s) prontos' +
+        (r.faltando && r.faltando.length ? ' · ' + r.faltando.length + ' faltando' : '') + '</span></div>' +
+        '</div>';
+      if (n) {
+        html += '<div class="arquivos mt-s">' + r.arquivos.map(a => { const u = '/relatorios/arquivo/' + encodeURIComponent(a); return '<div class="arq"><a href="' + u + '" target="_blank"><span class="tipo">PDF</span><span class="nm">' + esc(a) + '</span></a><a class="baixar" href="' + u + '" download title="Baixar"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></a></div>'; }).join('') + '</div>';
+      }
+      if (r.erros && r.erros.length) {
+        html += '<div class="aviso mt">Falhas registradas em log_erros.txt:<br>' + r.erros.map(e => '• ' + esc(e)).join('<br>') + '<br><small>Rode de novo com as mesmas cidades: o que já foi gerado é pulado.</small></div>';
+      }
+      html += '</div>';
+    } else if (tipo === 'consorcio') {
+      html += '<div class="cartao"><div class="entre"><span class="chip ok">Relatório pronto' + (r.n_falhas ? ' · ' + r.n_falhas + ' município(s) com erro' : '') + '</span>' +
+        '<div style="display:flex;gap:8px"><a class="btn primario pequeno" href="/consorcios/' + encodeURIComponent(r.relatorio_id) + '">Ver relatório</a>' +
+        '<a class="btn pequeno" href="/consorcios/arquivo/' + encodeURIComponent(r.arquivo_xlsx) + '">Baixar .xlsx</a></div></div></div>';
+    } else if (tipo === 'crm') {
+      const real = r.enviar, err = r.erros || 0;
+      const verbo = r.acao === 'responsavel' ? (real ? 'trocado(s)' : 'seriam trocados') : (real ? 'criado(s) no CRM' : 'seriam criados');
+      html += '<div class="cartao"><div class="entre"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<span class="chip ' + (real ? 'ok' : 'neutro') + '">' + (r.ok || 0) + ' ' + verbo + '</span>' +
+        (err ? '<span class="chip erro">' + err + ' com erro</span>' : '') +
+        (real ? '' : '<span class="chip">simulação — nada foi alterado</span>') + '</div>' +
+        '<div style="display:flex;gap:8px"><a class="btn pequeno" href="/crm?aba=' + esc(r.acao) + '">Voltar ao CRM</a>' +
+        (real ? '<a class="btn primario pequeno" href="{{ crm_url }}" target="_blank" rel="noopener">Conferir no GesMkt</a>' : '') +
+        '</div></div></div>';
+    } else if (tipo === 'teto_ppi') {
+      const u = '/teto-ppi/arquivo/' + encodeURIComponent(r.arquivo || '');
+      html += '<div class="cartao"><div class="entre"><span class="chip ok">Planilha pronta · ' + esc(r.arquivo) + '</span>' +
+        '<div style="display:flex;gap:8px"><a class="btn pequeno" href="/teto-ppi">Voltar</a><a class="btn primario pequeno" href="' + u + '">Baixar .xlsx</a></div></div>' +
+        ((r.conferencia || []).length ? '<p class="dim mt-s" style="font-size:12.5px">✔ Conferido: nas ' + r.conferencia.length + ' consultas, a soma das linhas bate com o “Total Recurso” do site.</p>' : '') + '</div>';
+    } else if (tipo === 'tabelas') {
+      html += '<div class="cartao"><div class="entre"><span class="chip ok">' + (r.itens || 0) + ' exames importados</span><a class="btn primario pequeno" href="/tabelas">Ir para a tabela</a></div></div>';
+    }
+    box.innerHTML = html;
+    box.hidden = !html;
+  }
+
+  async function tique() {
+    if (parado) return;
+    try {
+      const resp = await fetch('/api/jobs/' + id + '?desde=' + desde);
+      if (resp.status === 404 || resp.status === 401) {
+        // 404: a Central foi reiniciada e o trabalho saiu da memória; 401: login expirou
+        parado = true;
+        document.getElementById('pulso').style.display = 'none';
+        document.getElementById('status-texto').textContent = resp.status === 404
+          ? 'trabalho não encontrado — a Central foi reiniciada' : 'sessão expirada — recarregue a página';
+        return;
+      }
+      const j = await resp.json();
+      if (j.log.length) {
+        log.textContent += (log.textContent ? '\n' : '') + j.log.join('\n');
+        log.scrollTop = log.scrollHeight;
+        desde = j.n_log;
+      }
+      mostrarCidades(j.itens);
+      document.getElementById('status-texto').textContent = j.status === 'rodando' ? 'Gerando…' : j.status;
+      document.getElementById('contagem').innerHTML = j.feito + ' / ' + j.total + ' · <span id="duracao">' + j.duracao + '</span>';
+      document.getElementById('progresso').style.width = j.percentual + '%';
+      if (['concluído', 'erro', 'cancelado', 'interrompido'].includes(j.status)) {
+        parado = true;
+        const fc = document.getElementById('form-cancelar'); if (fc) fc.remove();
+        document.getElementById('pulso').style.display = 'none';
+        document.getElementById('status').style.color = j.status !== 'concluído' ? 'var(--brand)' : 'var(--green)';
+        document.getElementById('status-detalhe').textContent = '';
+        mostrarResultado(j);
+        return;
+      }
+    } catch (e) { /* tenta de novo no próximo tique */ }
+    setTimeout(tique, 1500);
+  }
+  tique();
+})();
+</script>
+{% endblock %}

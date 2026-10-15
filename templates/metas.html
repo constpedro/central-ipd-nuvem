@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block titulo %}Situação das metas{% endblock %}
+{% block acoes_topo %}
+<a class="btn primario" href="{{ url_for('relatorios') }}">Atualizar com nova rodada SISCAN</a>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Relatórios', 'Situação das metas', '<path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path>') %}Produção de citologia no SISCAN contra a meta do PPI (qtd anual ÷ 12). A situação é pelo <strong>acumulado do ano</strong>: os meses acima da meta compensam os de baixo. O último mês aparece ao lado como alerta. Usa os dados das últimas rodadas SISCAN + PPI; para atualizar, gere o relatório SISCAN de novo.{% endcall %}
+
+<form method="get" class="cartao" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+  <label for="consorcio" style="font-size:13px;font-weight:600">Ver por consórcio</label>
+  <select id="consorcio" name="consorcio" onchange="this.form.submit()" style="min-width:240px">
+    <option value="">Todos os municípios com SISCAN</option>
+    {% for l in listas %}<option value="{{ l.nome }}" {{ 'selected' if escolhida and escolhida.nome == l.nome }}>{{ l.titulo }} ({{ l.cidades|length }})</option>{% endfor %}
+  </select>
+  {% if escolhida %}<span class="dim" style="font-size:12.5px">{{ s.linhas|length }} de {{ escolhida.cidades|length }} municípios com dados · <a href="{{ url_for('metas_pagina') }}">limpar filtro</a></span>{% endif %}
+  <noscript><button class="btn" type="submit">Filtrar</button></noscript>
+  {% if s.linhas %}
+  <input type="search" id="busca-municipio" placeholder="Buscar município" autocomplete="off" style="flex:1;min-width:200px" oninput="filtrarMunicipios(this.value)">
+  <label for="ordem" style="font-size:13px;font-weight:600">Ordenar por</label>
+  <select id="ordem" onchange="ordenarMunicipios(this.value)">
+    <option value="pct-asc">Pior situação no ano</option>
+    <option value="pct-desc">Melhor situação no ano</option>
+    <option value="mes-asc">Pior último mês</option>
+    <option value="mes-desc">Melhor último mês</option>
+    <option value="nome-asc">Nome (A–Z)</option>
+    <option value="meta-desc">Maior meta</option>
+    <option value="acum-desc">Maior produção no ano</option>
+  </select>
+  <span class="dim" id="busca-vazia" style="font-size:12.5px" hidden>Nenhum município encontrado.</span>
+  {% endif %}
+</form>
+
+<div class="kpis">
+  <div class="kpi"><small>Abaixo da meta (&lt; {{ s.limite_atencao }}%)</small><strong style="color:var(--brand)">{{ s.n_abaixo }}</strong></div>
+  <div class="kpi"><small>Atenção ({{ s.limite_atencao }}–99%)</small><strong style="color:var(--amber)">{{ s.n_atencao }}</strong></div>
+  <div class="kpi"><small>Na meta</small><strong style="color:var(--green)">{{ s.n_ok }}</strong></div>
+  <div class="kpi"><small>Sem meta guardada</small><strong>{{ s.sem_meta|length }}</strong></div>
+</div>
+
+{% if s.linhas %}
+<div class="cartao mt">
+  <div class="rolagem"><table class="dados" data-sem-ordem>
+    <thead><tr><th>Município</th><th class="a">Acumulado no ano</th><th class="a">Meta/mês</th><th class="a">% do ano</th><th>Situação</th><th>Último mês</th><th>Últimos meses</th></tr></thead>
+    <tbody>
+    {% for l in s.linhas %}
+    <tr style="cursor:pointer" data-nome="{{ l.cidade }}" data-pct="{{ l.pct }}" data-mes="{{ l.pct_mes }}" data-meta="{{ l.meta }}" data-acum="{{ l.acumulado }}" onclick="if (!event.target.closest('a')) location.href=this.querySelector('a').href">
+      <td><a href="{{ url_for('meta_municipio', slug=l.slug, consorcio=escolhida.nome if escolhida else None) }}"><strong>{{ l.cidade }}</strong></a><div class="dim" style="font-size:11.5px">SISCAN atualizado {{ l.atualizacao or '—' }}{% if l.competencia_ppi %} · PPI {{ l.competencia_ppi[4:] }}/{{ l.competencia_ppi[:4] }}{% endif %}{% if l.regra == 'todos' %} · meta: todos os códigos{% endif %}</div></td>
+      <td class="a">{{ l.acumulado }} <span class="dim" style="font-size:11.5px">de {{ '%.0f'|format(l.meta_acumulada) }} · {{ l.meses_ano }} meses</span>
+        {% if l.picos %}<div style="font-size:11.5px;margin-top:3px;color:var(--plum, #7a4b8c)" title="Mês muito acima do normal da cidade (provável lote represado). Fica fora do acumulado.">⚠ pico fora: {{ l.picos|join(', ') }}</div>{% endif %}</td>
+      <td class="a">{{ '%.0f'|format(l.meta) }}</td>
+      <td class="a"><strong>{{ '%.0f'|format(l.pct) }}%</strong></td>
+      <td>
+        {% if l.classe == 'ok' %}<span class="chip ok">Na meta</span>
+        {% elif l.classe == 'atencao' %}<span class="chip">Atenção</span>
+        {% else %}<span class="chip erro">Abaixo</span>{% endif %}
+      </td>
+      <td>{{ l.mes }}: <strong>{{ l.qtd }}</strong> <span style="color:var({{ '--green' if l.classe_mes == 'ok' else '--amber' if l.classe_mes == 'atencao' else '--brand' }});font-weight:600">{{ '%.0f'|format(l.pct_mes) }}%</span>
+        {% if l.mes_zerado %}<div class="dim" style="font-size:11.5px;margin-top:3px">mês zerado — conferir digitação</div>
+        {% elif l.seguidos >= 2 %}<div class="dim" style="font-size:11.5px;margin-top:3px">{{ l.seguidos }} meses seguidos abaixo</div>{% endif %}
+      </td>
+      <td><div style="display:flex;gap:3px;align-items:flex-end;height:28px" title="{% for h in l.historico %}{{ h.mes }}: {{ h.qtd }} ({{ h.pct }}%)&#10;{% endfor %}">
+        {% for h in l.historico %}<i style="display:block;width:9px;border-radius:2px;height:{{ [[h.pct, 100]|min, 6]|max * 0.28 }}px;background:{{ 'repeating-linear-gradient(45deg,#9a8fa3 0 2px,transparent 2px 4px)' if h.pico else 'var(' ~ ('--green' if h.classe == 'ok' else '--amber' if h.classe == 'atencao' else '--brand') ~ ')' }}"></i>{% endfor %}
+      </div></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="aviso mt">{% if escolhida %}Nenhum município deste consórcio tem SISCAN e meta guardados ainda.{% else %}Ainda não há municípios com SISCAN e meta guardados. Gere um relatório SISCAN + PPI para começar.{% endif %}</div>
+{% endif %}
+
+{% if s.sem_siscan %}
+<details class="det mt" open><summary>Do consórcio, ainda sem SISCAN consultado <span>{{ s.sem_siscan|length }}</span></summary>
+  <div class="cont"><p class="mt-s">{{ s.sem_siscan|join(', ') }}</p>
+  <form method="post" action="{{ url_for('relatorios') }}" class="mt-s" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="tipo" value="siscan">
+    <input type="hidden" name="competencia" value="{{ competencia_padrao }}">
+    <textarea name="cidades" id="cidades-sem-siscan" hidden>{{ s.sem_siscan|join('\n') }}</textarea>
+    <button class="btn primario" type="submit">Gerar SISCAN dessas {{ s.sem_siscan|length }} cidades</button>
+    <button class="btn" type="button" onclick="copiarCidades(this, 'cidades-sem-siscan')">Copiar</button>
+  </form></div>
+</details>
+{% endif %}
+
+{% if s.sem_meta %}
+<details class="det mt"><summary>Com SISCAN, mas sem meta guardada <span>{{ s.sem_meta|length }}</span></summary>
+  <div class="cont"><p class="dim" style="font-size:12.5px">Estes municípios foram consultados antes deste painel existir. Rode o relatório SISCAN deles de novo (é rápido, usa o cache) para entrarem aqui.</p>
+  <p class="mt-s">{{ s.sem_meta|join(', ') }}</p>
+  <form method="post" action="{{ url_for('relatorios') }}" class="mt-s" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="tipo" value="siscan">
+    <input type="hidden" name="competencia" value="{{ competencia_padrao }}">
+    <textarea name="cidades" id="cidades-sem-meta" hidden>{{ s.sem_meta|join('\n') }}</textarea>
+    <button class="btn primario" type="submit">Gerar SISCAN dessas {{ s.sem_meta|length }} cidades</button>
+    <button class="btn" type="button" onclick="copiarCidades(this, 'cidades-sem-meta')">Copiar</button>
+  </form></div>
+</details>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function semAcento(txt) { return txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function ordenarMunicipios(criterio) {
+  const [campo, sentido] = criterio.split('-');
+  const corpo = document.querySelector('table.dados tbody');
+  const linhas = [...corpo.querySelectorAll('tr')];
+  linhas.sort((a, b) => {
+    const r = campo === 'nome'
+      ? a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR')
+      : parseFloat(a.dataset[campo]) - parseFloat(b.dataset[campo]);
+    return sentido === 'desc' ? -r : r;
+  });
+  linhas.forEach(tr => corpo.appendChild(tr));
+  try { localStorage.setItem('metas-ordem', criterio); } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', () => {
+  let salva = null;
+  try { salva = localStorage.getItem('metas-ordem'); } catch (e) {}
+  const sel = document.getElementById('ordem');
+  if (sel && salva && sel.querySelector('option[value="' + salva + '"]')) { sel.value = salva; ordenarMunicipios(salva); }
+});
+function filtrarMunicipios(termo) {
+  const alvo = semAcento(termo);
+  let visiveis = 0;
+  document.querySelectorAll('table.dados tbody tr').forEach(tr => {
+    const nome = semAcento(tr.querySelector('td strong').textContent);
+    const mostra = !alvo || nome.includes(alvo);
+    tr.hidden = !mostra;
+    if (mostra) visiveis++;
+  });
+  document.getElementById('busca-vazia').hidden = visiveis > 0;
+}
+function copiarCidades(botao, id) {
+  const texto = document.getElementById(id).value;
+  const pronto = () => { botao.textContent = 'Copiado ✓'; };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(pronto);
+    return;
+  }
+  // Acesso pela rede (http sem localhost): a API de área de transferência não existe.
+  const area = document.createElement('textarea');
+  area.value = texto;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand('copy');
+  area.remove();
+  pronto();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Relatório por consórcio{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('consorcios')">Abrir pasta</button>
+{% endblock %}
+
+{% block conteudo %}
+
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('blue', 'Relatórios', 'Relatório por consórcio', '<path d="M3 20h18M5 20v-8M12 20V7M19 20V3"></path>') %}Para cada município, consulta os subgrupos 0203 e 0202 do PPI e separa Anatopatológicos, Citopatológicos e Análises Clínicas, com a parcela atendida no polo. Sai uma planilha com as abas Resumo, Detalhe e Notas.{% endcall %}
+
+<div class="grade c2">
+  <form method="post" class="cartao"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <h2>Montar relatório</h2>
+    <p>As consultas ficam em cache por competência: repetir um consórcio, ou gerar os PDFs das mesmas cidades depois, é instantâneo.</p>
+
+    <div class="campo mt"><label>Consórcio (lista salva)</label>
+      <select name="lista" onchange="document.querySelector('[name=nome]').placeholder = this.value ? this.options[this.selectedIndex].dataset.titulo : 'ex.: CISMARPA'">
+        <option value="">— escolher —</option>
+        {% for l in listas %}<option value="{{ l.nome }}" data-titulo="{{ l.titulo }}">{{ l.titulo }} ({{ l.cidades|length }} cidades)</option>{% endfor %}
+      </select>
+      <span class="dica">Não tem a lista? <a href="{{ url_for('listas') }}">Crie aqui</a> — ou digite as cidades abaixo.</span>
+    </div>
+    <div class="campo"><label>Cidades avulsas (uma por linha, opcional)</label><textarea name="cidades" style="min-height:90px"></textarea></div>
+    <div class="linha campo">
+      <div class="campo"><label>Nome do consórcio (título do relatório)</label><input type="text" name="nome" placeholder="ex.: CISMARPA"><span class="dica">Vazio = usa o título da lista.</span></div>
+      <div class="campo"><label>Competência (AAAAMM)</label><input type="text" name="competencia" data-lembrar="competencia" value="{{ competencia_padrao }}" pattern="\d{6}" maxlength="6"></div>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Polo de destaque — nome</label><input type="text" name="polo_nome" value="{{ polo.nome }}"></div>
+      <div class="campo"><label>Polo — código IBGE (6 dígitos)</label><input type="text" name="polo_codigo" value="{{ polo.codigo }}" pattern="\d{6}" maxlength="6"></div>
+    </div>
+    <div class="mt"><button class="btn primario" type="submit">Consultar e montar<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button></div>
+  </form>
+
+  <div class="cartao">
+    <h2>Relatórios gerados</h2>
+    {% if relatorios %}
+    <div class="rolagem mt-s"><table class="dados" data-filtro>
+      <tr><th>Consórcio</th><th>Comp.</th><th class="n">Mun.</th><th class="n">Total anual</th><th class="n">Atend. polo</th><th></th></tr>
+      {% for r in relatorios %}
+      <tr><td><strong>{{ r.nome }}</strong><br><span class="dim" style="font-size:12px">{{ r.gerado_em }}</span></td><td>{{ r.competencia_fmt }}</td><td class="n">{{ r.n_municipios }}</td>
+        <td class="n">{{ r.total_anual|moeda }}</td><td class="n">{{ r.polo_total|moeda }}</td>
+        <td style="white-space:nowrap"><a class="btn pequeno" href="{{ url_for('consorcio_ver', relatorio_id=r.id) }}">Ver</a> <a class="btn pequeno" href="{{ url_for('consorcio_arquivo', nome=r.arquivo_xlsx) }}">.xlsx</a></td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<div class="vazio mt-s">Nenhum relatório ainda.</div>{% endif %}
+  </div>
+</div>
+{% endblock %}

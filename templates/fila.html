@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block titulo %}Fila de relatórios{% endblock %}
+{% block crumb %}Relatórios PPI / SISCAN / <b>Fila</b>{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('saida')">Abrir pasta de saída</button>
+<a class="btn primario" href="{{ url_for('relatorios') }}"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Nova rodada</a>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Relatórios', 'Fila de relatórios', '<path d="M4 6h16M4 12h16M4 18h10"></path>') %}Tudo o que está rodando, esperando na fila e o que já terminou — com os PDFs de cada rodada. Esta página se atualiza sozinha; pode sair e voltar quando quiser.{% endcall %}
+
+<div id="ativos"></div>
+<div class="secao mt">Concluídas <span class="dim" id="n-hist"></span></div>
+<div id="historico"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  let dados = {{ jobs|tojson }};
+  const abertos = new Set();
+  function esc(v) { const el = document.createElement('span'); el.textContent = v == null ? '' : String(v); return el.innerHTML; }
+  const CHIP = {'concluído': 'ok', 'erro': 'erro', 'cancelado': 'neutro', 'interrompido': 'erro', 'rodando': '', 'na fila': 'neutro'};
+  const BAIXAR = '<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>';
+
+  function cartao(j, posicao) {
+    const ativo = j.status === 'rodando' || j.status === 'na fila';
+    const r = j.resultado || {};
+    const pdfs = r.arquivos || [];
+    let status = j.status === 'rodando' ? 'Gerando…' : j.status === 'na fila' ? (posicao ? posicao + 'º na fila' : 'Na fila') : j.status;
+    let info = [j.criado_em];
+    if (j.duracao) info.push(j.duracao);
+    if (j.total) info.push(j.feito + '/' + j.total + ' cidades');
+    if (j.n_erro) info.push(j.n_erro + ' com erro');
+    let html = '<div class="cartao" style="margin-bottom:12px">' +
+      '<div class="entre"><div><strong>' + esc(j.titulo) + '</strong><div class="dim" style="font-size:12.5px;margin-top:2px">' + esc(info.join(' · ')) + '</div></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip ' + (CHIP[j.status] ?? '') + '">' + esc(status) + '</span>' +
+      (!ativo && pdfs.length ? '<span class="chip ok">' + pdfs.length + ' PDF(s)</span>' : '') +
+      '<a class="btn pequeno" href="/jobs/' + encodeURIComponent(j.id) + '">' + (ativo ? 'Acompanhar' : 'Detalhes') + '</a></div></div>';
+    if (ativo) {
+      html += '<div class="barra mt-s"><i style="width:' + (j.percentual || 0) + '%"></i></div>';
+    }
+    if (pdfs.length) {
+      const aberto = abertos.has(j.id) ? ' open' : '';
+      html += '<details class="det mt-s" data-id="' + esc(j.id) + '"' + aberto + '><summary>Ver PDFs <span>' + pdfs.length + ' arquivo(s)</span></summary><div class="cont"><div class="arquivos">' +
+        pdfs.map(a => { const u = '/relatorios/arquivo/' + encodeURIComponent(a);
+          return '<div class="arq"><a href="' + u + '" target="_blank"><span class="tipo">PDF</span><span class="nm">' + esc(a) + '</span></a><a class="baixar" href="' + u + '" download title="Baixar">' + BAIXAR + '</a></div>'; }).join('') +
+        '</div></div></details>';
+    }
+    if (j.status === 'erro' || j.status === 'interrompido') {
+      html += '<p class="dim mt-s" style="font-size:12.5px">' + esc(j.erro || '') + '</p>';
+    }
+    return html + '</div>';
+  }
+
+  function desenhar() {
+    const ativos = dados.filter(j => j.status === 'rodando' || j.status === 'na fila');
+    const hist = dados.filter(j => !(j.status === 'rodando' || j.status === 'na fila'));
+    let pos = 0;
+    document.getElementById('ativos').innerHTML = ativos.length
+      ? '<div class="secao">Rodando agora e na fila</div>' + ativos.map(j => cartao(j, j.status === 'na fila' ? ++pos : 0)).join('')
+      : '<div class="cartao"><div class="vazio">Nada rodando agora. <a href="{{ url_for('relatorios') }}">Iniciar uma rodada</a>.</div></div>';
+    document.getElementById('historico').innerHTML = hist.length ? hist.map(j => cartao(j)).join('') : '<div class="vazio">Nenhuma rodada concluída ainda.</div>';
+    document.getElementById('n-hist').textContent = hist.length ? '· ' + hist.length : '';
+    document.querySelectorAll('details[data-id]').forEach(d => d.addEventListener('toggle', () => {
+      d.open ? abertos.add(d.dataset.id) : abertos.delete(d.dataset.id);
+    }));
+  }
+
+  async function atualizar() {
+    try {
+      const r = await fetch('/api/fila');
+      if (r.ok) { dados = await r.json(); desenhar(); }
+    } catch (e) { /* tenta de novo no próximo ciclo */ }
+    const temAtivo = dados.some(j => j.status === 'rodando' || j.status === 'na fila');
+    setTimeout(atualizar, temAtivo ? 2500 : 10000);
+  }
+  desenhar();
+  setTimeout(atualizar, 2500);
+})();
+</script>
+{% endblock %}

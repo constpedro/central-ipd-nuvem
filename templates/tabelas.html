@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titulo %}Tabelas de preço{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('tabelas')">Abrir pasta</button>
+{% if not nuvem %}<form method="post" action="{{ url_for('tabelas_reimportar') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn" type="submit" {{ 'disabled' if importando }}>{{ 'Importando…' if importando else 'Reimportar tabelas' }}</button></form>{% endif %}
+<a class="btn" href="{{ url_for('tabelas_conferencia') }}"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>Conferir um arquivo</a>
+{% endblock %}
+
+{% block conteudo %}
+
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('green', 'Consulta', 'Tabelas de preço', '<path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"></path>') %}As tabelas oficiais ({{ modalidades.values()|map('replace', 'Empresas e Médicos — ', '')|join(', ') }}) lidas das exportações do Shift e unificadas por mnemônico. A pesquisa também consulta as tabelas adicionais de consórcios e a referência SUS/TUSS{% if info %} — {{ info['itens']|length }} exames principais, importados em {{ info.importado_em }}{% endif %}.{% endcall %}
+
+{% if info and desatualizado and not importando %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div>As tabelas configuradas em <code>config.py</code> mudaram desde a última importação. Clique em "Reimportar tabelas" para atualizar.</div></div>
+{% endif %}
+{% if not info %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg><div>A tabela ainda não foi importada{{ ' — está importando agora, leva cerca de um minuto. Atualize a página daqui a pouco.' if importando else '. Clique em "Reimportar tabelas".' }}</div></div>
+{% else %}
+<div class="cartao">
+  <div class="busca-caixa"><input type="text" id="q" value="{{ q }}" placeholder="mnemônico ou nome do exame — ex.: HEM, TSH, glicose, biópsia" autofocus autocomplete="off"></div>
+  <div class="rolagem mt-s"><table class="dados cel-rotulos" id="resultado">
+    <thead><tr><th>Mnemônico</th><th>Descrição</th><th>Área</th>{% for k, v in modalidades.items() %}<th class="n">{{ v.replace('Empresas e Médicos — ', '') }}</th>{% endfor %}</tr></thead>
+    <tbody><tr><td colspan="{{ 3 + modalidades|length }}" class="dim">Digite para buscar.</td></tr></tbody>
+  </table></div>
+  <p class="dim mt-s" style="font-size:12.5px">Fontes principais: {% for k, f in info.fontes.items() %}{{ f.arquivo }} ({{ f.itens }}){{ ' · ' if not loop.last }}{% endfor %}. Catálogo Shift: {{ info.n_shift }} procedimentos.</p>
+  {% if info.fontes_adicionais %}
+  <p class="dim mt-s" style="font-size:12.5px">Tabelas adicionais: {% for k, f in info.fontes_adicionais.items() %}{{ f.arquivo }} ({{ f.itens }} itens){{ ' · ' if not loop.last }}{% endfor %}.</p>
+  {% endif %}
+</div>
+<div class="cartao mt" id="extras-wrap" hidden>
+  <h2>Resultados nas tabelas adicionais</h2>
+  <div class="rolagem mt-s"><table class="dados cel-rotulos" id="resultado-extras">
+    <thead><tr><th>Fonte</th><th>Mnemônico / código</th><th>Descrição</th><th>Código SUS</th><th>Código TUSS</th><th class="n">Qtd./ano</th><th class="n">Valor</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const q = document.getElementById('q');
+const MODS = {{ modalidades.keys()|list|tojson }}, NCOL = 3 + MODS.length;
+if (q) {
+  const tb = document.querySelector('#resultado tbody');
+  const extrasWrap = document.getElementById('extras-wrap');
+  const extrasTb = document.querySelector('#resultado-extras tbody');
+  const fmt = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const fmtQtd = v => v == null ? '—' : Number(v).toLocaleString('pt-BR', {maximumFractionDigits: 2});
+  const esc = v => { const el = document.createElement('span'); el.textContent = v == null ? '' : String(v); return el.innerHTML; };
+  // no celular cada linha vira um cartão: o nome da coluna vai junto do valor
+  function rotular() {
+    document.querySelectorAll('table.cel-rotulos').forEach(t => {
+      const nomes = [...t.querySelectorAll('thead th')].map(th => th.textContent.trim());
+      t.querySelectorAll('tbody tr').forEach(tr => [...tr.cells].forEach((td, i) => { if (td.colSpan === 1) td.dataset.rot = nomes[i] || ''; }));
+    });
+  }
+  let timer, seq = 0;
+  async function buscar() {
+    const t = q.value.trim();
+    const minha = ++seq;  // resposta de uma busca antiga não sobrescreve a atual
+    if (t.length < 2) {
+      tb.innerHTML = '<tr><td colspan="' + NCOL + '" class="dim">Digite para buscar.</td></tr>';
+      extrasTb.innerHTML = '';
+      extrasWrap.hidden = true;
+      return;
+    }
+    const r = await fetch('/api/tabelas/busca?q=' + encodeURIComponent(t) + '&n=80');
+    const j = await r.json();
+    if (minha !== seq) return;
+    tb.innerHTML = (j.itens || []).map(it => '<tr><td class="mn">' + esc(it.mnemonico) + '</td><td>' + esc(it.descricao) + '</td><td class="dim" style="font-size:12px">' + esc(it.area) + '</td>' +
+      MODS.map(m => '<td class="n">' + fmt(it[m]) + '</td>').join('') + '</tr>').join('') ||
+      '<tr><td colspan="' + NCOL + '" class="dim">Nada encontrado.</td></tr>';
+    const extras = j.extras || [];
+    extrasTb.innerHTML = extras.map(it => '<tr><td>' + esc(it.fonte) + '</td><td class="mn">' + esc(it.identificador) + '</td><td>' + esc(it.descricao) + '</td>' +
+      '<td>' + esc(it.codigo_sus) + '</td><td>' + esc(it.codigo_tuss) + '</td><td class="n">' + fmtQtd(it.quantidade) + '</td><td class="n">' + fmt(it.valor) + (it.valor_minimo != null ? '<div class="dim" style="font-size:11.5px">mín. ' + fmt(it.valor_minimo) + '</div>' : '') + '</td></tr>').join('');
+    extrasWrap.hidden = !extras.length;
+    rotular();
+  }
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 150); });
+  if (q.value) buscar();
+}
+</script>
+{% endblock %}

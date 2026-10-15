@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar · Central IPD</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ versao_css }}">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+</head>
+<body class="tela-login">
+<div class="caixa-login">
+  <img class="marca-login" src="{{ url_for('static', filename='logo_ipd.png') }}" alt="ipd Exames e Saúde">
+  <h1>Central IPD</h1>
+  <p>Área de consultas comercial</p>
+
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in mensagens %}
+    <div class="flash {{ cat }}"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('login') }}">
+    <input type="hidden" name="proximo" value="{{ proximo }}">
+    <div class="campo">
+      <label for="senha">Senha da equipe</label>
+      <input type="password" id="senha" name="senha" autofocus autocomplete="current-password">
+    </div>
+    <button class="btn primario" type="submit" style="width:100%;justify-content:center;margin-top:16px">Entrar</button>
+  </form>
+
+  {% if nuvem %}
+  <small>No iPhone: <strong>Compartilhar → Adicionar à Tela de Início</strong> para ter o ícone do app.</small>
+  {% else %}
+  <small>Você está acessando a Central que roda no computador <strong>{{ nome_maquina }}</strong>.</small>
+  {% endif %}
+</div>
+</body>
+</html>
