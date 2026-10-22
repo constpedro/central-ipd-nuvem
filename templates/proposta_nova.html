@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar proposta' if edicao else 'Nova proposta' }}{% endblock %}
+{% block crumb %}Propostas / <b>{% if edicao %}{{ '%03d' % edicao.numero|int }}/{{ edicao.ano }}{% else %}Nova proposta{% endif %}</b>{% endblock %}
+{% block acoes_topo %}
+<a class="btn" href="{{ url_for('propostas_pagina') }}">Voltar ao catálogo</a>
+{% endblock %}
+
+{% block conteudo %}
+{% set d = edicao or rascunho %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('plum', 'Comercial', ('Editar proposta ' ~ ('%03d' % edicao.numero|int) ~ '/' ~ edicao.ano) if edicao else 'Nova proposta', '<path d="M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h6"></path>') %}Preenche o template oficial (.docx) com cliente, itens e valores{{ ' e gera o PDF' if soffice else '' }}. {% if edicao %} Acrescente ou ajuste os exames e gere de novo: sai com o mesmo número e a mesma data, e a versão anterior fica guardada em <code>_versoes_anteriores</code> na pasta da proposta.{% else %} Os exames vêm da tabela de preços: digite o mnemônico ou o nome e escolha.{% endif %}{% endcall %}
+
+<form method="post" id="form-proposta"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">{% if edicao %}<input type="hidden" name="editar" value="{{ edicao.pasta_rel }}">{% endif %}
+<div class="grade c2i">
+  <div class="coluna-proposta" style="display:flex;flex-direction:column;gap:14px">
+  <div class="cartao">
+    <h2>Dados da proposta</h2>
+    <div class="linha campo mt-s">
+      {% set to = d.tipo_orcamento if d else '' %}
+      <div class="campo"><label>Tipo de orçamento</label>
+        <input type="hidden" name="tipo_orcamento" value="{{ to or '' }}">
+        <select id="tipo_raiz" required onchange="tipoRaizMudou()"><option value="">— escolha —</option>
+          <option value="tabela" {{ 'selected' if to and to.startswith('tabela_') }}>Tabela completa</option>
+          <option value="os" {{ 'selected' if to == 'os' }}>{{ classif.tipo_orcamento.os }}</option>
+          <option value="avulsos" {{ 'selected' if to == 'avulsos' }}>{{ classif.tipo_orcamento.avulsos }}</option></select></div>
+      <div class="campo" id="campo-subtipo" {{ '' if to and to.startswith('tabela_') else 'hidden' }}><label>Tabela completa</label>
+        <select id="tipo_sub" onchange="tipoRaizMudou()"><option value="">— escolha —</option>{% for k, v in classif.tipo_orcamento.items() if k.startswith('tabela_') %}<option value="{{ k }}" {{ 'selected' if to == k }}>{{ v.split('— ')[-1] }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Etapa</label>
+        <select name="etapa" required onchange="classifMudou()"><option value="">— escolha —</option>{% for k, v in classif.etapa.items() %}<option value="{{ k }}" {{ 'selected' if d and d.etapa == k }}>{{ v }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Cliente</label>
+        <select name="cliente_categoria" required onchange="classifMudou()"><option value="">— escolha —</option>{% for k, v in classif.cliente_categoria.items() %}<option value="{{ k }}" {{ 'selected' if d and d.cliente_categoria == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="campo fixo" style="width:180px"><label>Novo ou atual</label>
+        <select name="cliente_situacao" required onchange="classifMudou()"><option value="">— escolha —</option>{% for k, v in classif.cliente_situacao.items() %}<option value="{{ k }}" {{ 'selected' if d and d.cliente_situacao == k }}>{{ v }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="campo"><label>Produto (um ou mais)</label>
+      <div style="display:flex;gap:18px;flex-wrap:wrap">{% for k, v in classif.produtos.items() %}<label style="display:flex;gap:6px;align-items:center;font-weight:500"><input type="checkbox" name="produtos" value="{{ k }}" onchange="preencherCompleta()" {{ 'checked' if d and k in (d.produtos or []) }}>{{ v }}</label>{% endfor %}</div>
+    </div>
+    <div class="aviso" id="aviso-regra" hidden style="padding:8px 12px;border-radius:10px;background:var(--amarelo-fundo,#fff4d6);color:var(--amarelo-texto,#7a5600);font-size:12.5px"></div>
+    <div class="linha campo">
+      <div class="campo fixo" style="width:110px"><label>Número</label><input type="number" name="numero" value="{{ d.numero if d and d.numero else proximo }}" min="1" {{ 'readonly' if edicao }}></div>
+      <div class="campo fixo" style="width:110px"><label>Ano</label><input type="number" name="ano" value="{{ d.ano if d and d.ano else ano_atual }}" min="2020" max="2100" {{ 'readonly' if edicao }}></div>
+    </div>
+    <div class="campo"><label>Cliente (Para:)</label><input type="text" name="cliente" value="{{ d.cliente if d else '' }}" placeholder="ex.: Prefeitura Municipal de Elói Mendes" required></div>
+    <div class="campo"><label>A/C (contato — opcional)</label><input type="text" name="contato" value="{{ d.contato if d else '' }}" placeholder="ex.: Juliana – Diretora Executiva"></div>
+    <div class="campo" id="campo-objeto"><label>Objeto</label><input type="text" name="objeto" value="{{ d.objeto if d and d.objeto else objeto_padrao }}"></div>
+    <div class="campo"><label>Quem assina</label>
+      <select name="signatario" id="signatario" required><option value="">— escolha quem assina —</option>{% for s in signatarios %}<option value="{{ s.id }}" {{ 'selected' if d and d.signatario == s.id }}>{{ s.nome }} — {{ s.cargo }}</option>{% endfor %}</select>
+    </div>
+    <details class="mt-s" id="avancado"><summary class="dim" style="cursor:pointer;font-size:12.5px">Tabela de preço e modelo do documento (escolhidos pela classificação)</summary>
+    <div class="linha campo">
+      <div class="campo"><label>Tabela de preço usada</label>
+        <select name="modalidade" id="modalidade" onchange="modalidadeMudou()">{% for k, v in modalidades.items() %}<option value="{{ k }}" {{ 'selected' if d and d.modalidade == k }}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="campo fixo" style="width:170px"><label>Patologia</label>
+        <select name="patologia" id="patologia" onchange="modalidadeMudou()"><option value="">da própria tabela</option><option value="cheia" {{ 'selected' if d and d.patologia == 'cheia' }}>Cheia</option><option value="minima" {{ 'selected' if d and d.patologia == 'minima' }}>Mínima</option></select></div>
+    </div>
+    <div class="campo"><label>Template</label>
+      <div class="opcoes">
+        <label class="opcao"><input type="radio" name="tipo" value="publica" {{ 'checked' if not d or d.tipo != 'privada' }} onchange="tipoMudou()"><div><strong>Saúde Pública — Cotação de preços</strong><span>Dados do fornecedor + tabela SEQ / Mnemônico / Descrição / Qtd. + UND / Valor. Prefeituras, consórcios, hospitais públicos.</span></div></label>
+        <label class="opcao"><input type="radio" name="tipo" value="privada" {{ 'checked' if d and d.tipo == 'privada' }} onchange="tipoMudou()"><div><strong>Saúde Privada — Cotação exame</strong><span>Carta com tabela Mnemônico / Descrição / Qtde / Código SUS / Valor. Empresas, clínicas, RH.</span></div></label>
+      </div>
+    </div>
+    </details>
+  </div>
+  </div>
+
+  <div class="cartao">
+    <h2>Itens</h2>
+    <p>Busque o exame; o valor vem da tabela escolhida e pode ser ajustado.</p>
+    <div class="busca-caixa mt">
+      <input type="text" id="busca" placeholder="mnemônico ou nome do exame (ex.: HEM, glicose, biópsia)" autocomplete="off">
+      <div class="sugestoes" id="sugestoes"></div>
+    </div>
+    <div id="importar" class="mt" hidden style="border:1px dashed var(--borda, #ccc);border-radius:12px;padding:14px">
+      <p style="margin-top:0">Cole aqui a lista com os valores (WhatsApp, e-mail, Excel) — ou cole o print com <b>Ctrl+V</b>, ou escolha a imagem. Os valores da lista são mantidos; o exame é procurado na tabela.</p>
+      <textarea id="imp-texto" rows="6" style="width:100%;font-family:inherit" placeholder="HEM  Hemograma  12,50&#10;TSH  25,00&#10;Glicose  8,90"></textarea>
+      <div class="mt-s" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="btn pequeno primario" onclick="importarLer()">Ler lista</button>
+        <label class="btn pequeno">Escolher imagem<input type="file" id="imp-arquivo" accept="image/png,image/jpeg" hidden onchange="importarLer(this.files[0])"></label>
+        <span id="imp-status" class="dim" style="font-size:12.5px"></span>
+      </div>
+      <div id="imp-previa" hidden class="mt-s">
+        <div class="rolagem"><table class="dados"><thead><tr><th style="width:30px"><input type="checkbox" checked onchange="document.querySelectorAll('.imp-sel').forEach(c => c.checked = this.checked)"></th><th>Lido na lista</th><th style="width:34%">Exame na tabela</th><th class="n" style="width:60px">Qtd</th><th class="n" style="width:100px">Valor</th></tr></thead><tbody id="imp-linhas"></tbody></table></div>
+        <div class="mt-s" style="display:flex;gap:8px;align-items:center"><button type="button" class="btn pequeno primario" onclick="importarAdicionar()">Adicionar marcados aos itens</button><span class="dim" style="font-size:12.5px">Em amarelo: não achei o exame com certeza — escolha na lista ou deixe o texto como está.</span></div>
+      </div>
+    </div>
+    <div class="rolagem mt-s"><table class="dados itens" id="itens">
+      <thead><tr><th style="width:110px">Mnemônico</th><th>Descrição</th><th class="n" style="width:70px">Qtd</th><th class="col-sus" style="width:130px">Código SUS</th><th class="n" style="width:110px">Valor (R$)</th><th style="width:36px"></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="entre mt-s">
+      <div style="display:flex;gap:8px"><button type="button" class="btn pequeno" onclick="adicionarItem({})">+ linha em branco</button>
+      <button type="button" class="btn pequeno" onclick="document.getElementById('importar').hidden ^= true">Importar lista ou print</button></div>
+      <div class="total-proposta"><span class="dim">Total</span><strong id="total">R$ 0,00</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="mt" style="display:flex;gap:10px;align-items:center">
+  <button class="btn primario" type="submit">{{ 'Gerar de novo com as alterações' if edicao else 'Gerar proposta' }}<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button>
+  <a class="btn" href="{{ url_for('propostas_pagina') }}">Cancelar</a>
+  {% if not soffice %}<span class="dim" style="font-size:12.5px">Nem LibreOffice nem Word encontrados: sai só o .docx (abra no Word e salve como PDF).</span>{% endif %}
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const tbody = document.querySelector('#itens tbody');
+function fmt(v) { return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+function esc(v) { const el = document.createElement('span'); el.textContent = v == null ? '' : String(v); return el.innerHTML; }
+function escAttr(v) { return esc(v).replace(/"/g, '&quot;'); }
+function modalidade() { return document.getElementById('modalidade').value; }
+const PATOLOGIAS = {{ patologias|tojson }}, REGRAS = {{ regras|tojson }};
+const NOMES_TAB = {{ modalidades|tojson }};
+// preço de um item: a tabela de patologia escolhida vale por cima da tabela de preço
+function preco(it) {
+  const pat = PATOLOGIAS[document.getElementById('patologia').value];
+  return pat && it[pat] != null ? it[pat] : it[modalidade()];
+}
+// Classificação completa -> sugere tabela e patologia (Tabelas.xlsx, out/2026)
+// Tipo de orçamento ramificado: "Tabela completa" abre a 2ª caixa (Credenciamento/Pregão/Renovação)
+function tipoRaizMudou() {
+  const raiz = document.getElementById('tipo_raiz').value, sub = document.getElementById('tipo_sub');
+  document.getElementById('campo-subtipo').hidden = raiz !== 'tabela';
+  sub.required = raiz === 'tabela';
+  document.querySelector('[name=tipo_orcamento]').value = raiz === 'tabela' ? sub.value : raiz;
+  classifMudou();
+}
+let regraAtual = null;
+// Saiu da "Tabela completa" (ou a regra não tem tabela): tira a lista que entrou sozinha.
+function limparAuto() {
+  if (!preenchidoAuto) return;
+  tbody.innerHTML = ''; preenchidoAuto = false; recalcular();
+}
+function classifMudou() {
+  if (!document.querySelector('[name=tipo_orcamento]').value.startsWith('tabela_')) limparAuto();
+  const v = n => document.querySelector('[name=' + n + ']').value;
+  const aviso = document.getElementById('aviso-regra');
+  const chave = [v('tipo_orcamento'), v('cliente_categoria'), v('etapa'), v('cliente_situacao')];
+  if (v('cliente_categoria')) {
+    document.querySelector('input[name=tipo][value=' + (v('cliente_categoria').startsWith('empresa_') ? 'privada' : 'publica') + ']').checked = true;
+    tipoMudou();
+  }
+  if (chave.some(x => !x)) { aviso.hidden = true; regraAtual = null; limparAuto(); return; }
+  const r = REGRAS[chave.join('|')];
+  regraAtual = r;
+  if (!r) { limparAuto(); aviso.hidden = false; aviso.textContent = 'Sem regra de tabela para esta combinação — escolha a tabela manualmente.'; return; }
+  const [tab, pat] = r;
+  if (tab) {
+    document.getElementById('patologia').value = pat || '';
+    document.getElementById('modalidade').value = tab;
+    aviso.hidden = false;
+    aviso.textContent = 'Tabela pela regra: ' + NOMES_TAB[tab] + (pat ? ' + patologia ' + (pat === 'cheia' ? 'cheia' : 'mínima') : '') + '.';
+  } else {
+    aviso.hidden = false;
+    aviso.textContent = '⚠ Acionar Controladoria: esta combinação não tem tabela definida' + (pat ? ' (patologia ' + (pat === 'cheia' ? 'cheia' : 'mínima') + ')' : '') + '. Você pode seguir escolhendo a tabela manualmente.';
+    // Só aviso: sem tabela definida, os preços já lançados ficam como estão
+    // (antes a patologia era zerada e os itens reprecificados pela tabela anterior).
+    limparAuto();
+    if (!pat) return;
+    document.getElementById('patologia').value = pat;
+  }
+  if (tab && chave[0].startsWith('tabela_')) preencherCompleta(); else { limparAuto(); modalidadeMudou(); }
+}
+function tipoMudou() {
+  const t = document.querySelector('input[name=tipo]:checked').value;
+  document.getElementById('campo-objeto').hidden = t !== 'publica';
+  document.querySelectorAll('.col-sus').forEach(e => e.hidden = t !== 'privada');
+}
+function recalcular() {
+  let total = 0;
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const q = paraNumero(tr.querySelector('[name=item_qtd]').value || '1');
+    const v = paraNumero(tr.querySelector('[name=item_valor]').value || '0');
+    total += q * v;
+  });
+  document.getElementById('total').textContent = fmt(total);
+}
+// Mesma regra de tabelas.para_numero no servidor: "1.234,56" -> 1234.56,
+// "12,5" -> 12.5, "12.50" -> 12.5 e "1.234" / "1.500.000" -> milhar.
+function paraNumero(texto) {
+  let s = String(texto).replace('R$', '').replace(/[\s ]/g, '');
+  if (s.includes(',') && s.includes('.')) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (s.includes(',')) s = s.replace(',', '.');
+  else if (/^[+-]?[1-9]\d{0,2}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  return parseFloat(s) || 0;
+}
+function adicionarItem(it) {
+  const tr = document.createElement('tr');
+  tr.dataset.mn = it.mnemonico || '';
+  const bruto = it.valor != null ? it.valor : preco(it);
+  // texto = valor digitado que voltou do servidor por estar inválido
+  const valor = typeof bruto === 'string' ? bruto : bruto != null ? Number(bruto).toFixed(2).replace('.', ',') : '';
+  const qtd = it.qtd != null ? String(it.qtd).replace('.', ',') : '1';
+  tr.innerHTML = '<td><input name="item_mnemonico" value="' + escAttr(it.mnemonico) + '" class="mono"></td>' +
+    '<td><input name="item_descricao" value="' + escAttr(it.descricao) + '"></td>' +
+    '<td class="n"><input name="item_qtd" value="' + escAttr(qtd) + '"></td>' +
+    '<td class="col-sus"><input name="item_sus" value="' + escAttr(it.codigo_sus || '') + '" placeholder="02.02.01.047-3"></td>' +
+    '<td class="n"><input name="item_valor" value="' + valor + '"></td>' +
+    '<td><button type="button" class="btn pequeno perigo" title="remover">×</button></td>';
+  // Mexeu à mão numa lista que entrou sozinha: ela passa a ser "do usuário"
+  // (trocar produto/classificação pergunta antes de substituir e não apaga mais).
+  tr.querySelector('button').onclick = () => { tr.remove(); preenchidoAuto = false; recalcular(); };
+  tr.querySelectorAll('input').forEach(i => i.addEventListener('input', () => { preenchidoAuto = false; recalcular(); }));
+  tbody.appendChild(tr);
+  if (!adicionandoLote) { tipoMudou(); recalcular(); }
+}
+let adicionandoLote = false, preenchidoAuto = false, seqCompleta = 0;
+// "Tabela completa": a regra escolheu a tabela -> todos os exames dela vão para os itens
+// (filtrados pelos produtos marcados). Itens digitados à mão só são trocados com confirmação.
+async function preencherCompleta() {
+  const tipo = document.querySelector('[name=tipo_orcamento]').value;
+  const aviso = document.getElementById('aviso-regra');
+  if (!tipo.startsWith('tabela_') || !regraAtual || !regraAtual[0]) return;
+  if (tbody.querySelector('tr') && !preenchidoAuto &&
+      !confirm('Trocar os itens atuais por todos os exames da tabela?')) return;
+  const minha = ++seqCompleta;
+  const qs = new URLSearchParams({modalidade: modalidade(), patologia: document.getElementById('patologia').value});
+  document.querySelectorAll('input[name=produtos]:checked').forEach(c => qs.append('produto', c.value));
+  const j = await (await fetch('/api/tabelas/completa?' + qs)).json();
+  if (minha !== seqCompleta) return;
+  tbody.innerHTML = '';
+  adicionandoLote = true;
+  (j.itens || []).forEach(it => adicionarItem(it));
+  adicionandoLote = false;
+  tipoMudou(); recalcular();
+  preenchidoAuto = true;
+  aviso.textContent += ' ' + (j.itens || []).length + ' exames adicionados aos itens.';
+}
+function modalidadeMudou() {
+  // Lista da "Tabela completa": busca a tabela inteira de novo (uma consulta só,
+  // em vez de uma por item — são ~2 mil).
+  if (preenchidoAuto) { preencherCompleta(); return; }
+  // reprecifica os itens que vieram da tabela
+  tbody.querySelectorAll('tr').forEach(async tr => {
+    if (!tr.dataset.mn) return;
+    const r = await fetch('/api/tabelas/busca?q=' + encodeURIComponent(tr.dataset.mn) + '&n=1');
+    const j = await r.json();
+    const it = (j.itens || [])[0];
+    if (it && it.mnemonico === tr.dataset.mn && preco(it) != null) {
+      tr.querySelector('[name=item_valor]').value = Number(preco(it)).toFixed(2).replace('.', ',');
+    }
+    recalcular();
+  });
+}
+
+// Importar lista colada ou print -> prévia para conferir -> itens
+let importados = [];
+document.getElementById('imp-texto').addEventListener('paste', e => {
+  const img = [...(e.clipboardData || {}).items || []].find(i => i.type.startsWith('image/'));
+  if (img) { e.preventDefault(); importarLer(img.getAsFile()); }
+});
+async function importarLer(arquivo) {
+  const st = document.getElementById('imp-status');
+  const fd = new FormData();
+  fd.append('modalidade', modalidade());
+  fd.append('_csrf', document.querySelector('#form-proposta [name=_csrf]').value);
+  if (arquivo) fd.append('imagem', arquivo, arquivo.name || 'print.png');
+  else fd.append('texto', document.getElementById('imp-texto').value);
+  st.textContent = arquivo ? 'Lendo a imagem…' : 'Lendo…';
+  let j;
+  try { j = await (await fetch('/api/proposta/importar', {method: 'POST', body: fd})).json(); }
+  catch (err) { st.textContent = 'Falha ao ler: ' + err; return; }
+  document.getElementById('imp-arquivo').value = '';
+  if (j.erro) { st.textContent = j.erro; document.getElementById('imp-previa').hidden = true; return; }
+  importados = j.itens;
+  const certos = importados.filter(it => it.achou).length;
+  st.textContent = importados.length + ' linhas lidas, ' + certos + ' com exame encontrado.';
+  document.getElementById('imp-linhas').innerHTML = importados.map((it, i) => {
+    const ops = [...(it.achou ? [] : [{mnemonico: '', descricao: '— manter o texto lido —'}]),
+                 ...(it.achou ? [{mnemonico: it.mnemonico, descricao: it.descricao}] : []),
+                 ...it.opcoes.filter(o => o.mnemonico !== it.mnemonico)];
+    return '<tr style="' + (it.achou ? '' : 'background:rgba(240,190,40,.15)') + '"><td><input type="checkbox" class="imp-sel" checked></td>' +
+      '<td style="font-size:12.5px">' + esc(it.original) + '</td>' +
+      '<td><select class="imp-ex" style="width:100%;min-width:220px">' + ops.map(o => '<option value="' + escAttr(o.mnemonico) + '" data-desc="' + escAttr(o.descricao) + '">' + esc((o.mnemonico ? o.mnemonico + ' — ' : '') + o.descricao) + '</option>').join('') + '</select></td>' +
+      '<td class="n"><input class="imp-qtd" value="' + escAttr(it.qtd) + '" style="width:50px"></td>' +
+      '<td class="n"><input class="imp-valor" value="' + Number(it.valor || 0).toFixed(2).replace('.', ',') + '" style="width:90px"></td></tr>';
+  }).join('');
+  document.getElementById('imp-previa').hidden = false;
+}
+function importarAdicionar() {
+  const linhas = [...document.querySelectorAll('#imp-linhas tr')];
+  adicionandoLote = true;
+  linhas.forEach((tr, i) => {
+    if (!tr.querySelector('.imp-sel').checked) return;
+    const op = tr.querySelector('.imp-ex').selectedOptions[0];
+    const mn = op ? op.value : '';
+    adicionarItem({mnemonico: mn, descricao: mn ? op.dataset.desc : importados[i].descricao,
+                   qtd: tr.querySelector('.imp-qtd').value, valor: tr.querySelector('.imp-valor').value});
+  });
+  adicionandoLote = false;
+  preenchidoAuto = false;
+  tipoMudou(); recalcular();
+  document.getElementById('importar').hidden = true;
+  document.getElementById('imp-previa').hidden = true;
+  document.getElementById('imp-texto').value = '';
+  document.getElementById('imp-status').textContent = '';
+}
+
+// busca com sugestões
+const busca = document.getElementById('busca'), sug = document.getElementById('sugestoes');
+let ultimo = [], ativo = -1, timer, seq = 0;
+busca.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 180); });
+busca.addEventListener('keydown', e => {
+  if (!sug.classList.contains('aberta')) return;
+  if (e.key === 'ArrowDown') { ativo = Math.min(ativo + 1, ultimo.length - 1); marcar(); e.preventDefault(); }
+  if (e.key === 'ArrowUp') { ativo = Math.max(ativo - 1, 0); marcar(); e.preventDefault(); }
+  if (e.key === 'Enter') { e.preventDefault(); if (ativo >= 0) escolher(ultimo[ativo]); }
+  if (e.key === 'Escape') fechar();
+});
+document.addEventListener('click', e => { if (!sug.contains(e.target) && e.target !== busca) fechar(); });
+function marcar() { [...sug.children].forEach((d, i) => d.classList.toggle('ativa', i === ativo)); }
+function fechar() { sug.classList.remove('aberta'); ativo = -1; }
+async function buscar() {
+  const q = busca.value.trim();
+  const minha = ++seq;  // resposta de uma busca antiga não sobrescreve a atual
+  if (q.length < 2) { fechar(); return; }
+  const r = await fetch('/api/tabelas/busca?q=' + encodeURIComponent(q) + '&n=12');
+  const j = await r.json();
+  if (minha !== seq) return;
+  ultimo = j.itens || [];
+  // exames que só existem na tabela adicional escolhida (ex.: Patologia)
+  const vistos = new Set(ultimo.map(it => it.mnemonico));
+  (j.extras || []).forEach(ex => {
+    const pat = PATOLOGIAS[document.getElementById('patologia').value];
+    if ((ex.chave === modalidade() || ex.chave === pat) && ex.mnemonico && !vistos.has(ex.mnemonico)) {
+      ultimo.push({mnemonico: ex.mnemonico, descricao: ex.descricao, codigo_sus: ex.codigo_sus, [ex.chave]: ex.valor});
+      vistos.add(ex.mnemonico);
+    }
+  });
+  // primeiro os que têm preço na tabela escolhida (a ordem da busca se mantém)
+  ultimo.sort((a, b) => (preco(a) == null) - (preco(b) == null));
+  if (j.erro) { sug.innerHTML = '<div><span></span><span>' + esc(j.erro) + '</span><span></span></div>'; sug.classList.add('aberta'); return; }
+  sug.innerHTML = ultimo.map(it => '<div><span class="mn">' + esc(it.mnemonico) + '</span><span>' + esc(it.descricao) + '</span><span class="vl">' + (preco(it) != null ? fmt(preco(it)) : '—') + '</span></div>').join('') || '<div><span></span><span class="dim">nada encontrado</span><span></span></div>';
+  [...sug.children].forEach((d, i) => d.onclick = () => escolher(ultimo[i]));
+  ativo = ultimo.length ? 0 : -1; marcar();
+  sug.classList.add('aberta');
+}
+// O navegador não exige "ao menos uma" caixa marcada: confere antes de enviar.
+document.getElementById('form-proposta').addEventListener('submit', e => {
+  let msg = '';
+  if (!tbody.querySelector('tr')) msg = 'Adicione ao menos um item.';
+  else if (!document.querySelector('input[name=produtos]:checked')) msg = 'Marque ao menos um produto na Classificação.';
+  if (msg) { e.preventDefault(); alert(msg); return; }
+  // Tabela completa leva mais de 1 min para gerar: trava o botão para não enviar duas vezes.
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  btn.textContent = tbody.querySelectorAll('tr').length > 300 ? 'Gerando… (tabela grande, pode levar 1–2 min)' : 'Gerando…';
+});
+// Enter num campo de texto enviava a proposta no meio do preenchimento (e com o
+// signatário ainda errado): só o botão Gerar envia.
+document.getElementById('form-proposta').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'submit') e.preventDefault();
+});
+// Quem assina: em proposta nova, já vem quem assinou a última neste computador.
+(() => {
+  const sel = document.getElementById('signatario');
+  try {
+    if (!sel.value && localStorage.getItem('signatario')) sel.value = localStorage.getItem('signatario');
+  } catch (_) {}
+  sel.addEventListener('change', () => { try { localStorage.setItem('signatario', sel.value); } catch (_) {} });
+})();
+// Voltou pelo botão "Voltar" do navegador: o botão não pode continuar travado.
+window.addEventListener('pageshow', () => { const b = document.querySelector('#form-proposta button[type=submit]'); if (b && b.disabled) location.reload(); });
+function escolher(it) { if (!it) return; preenchidoAuto = false; adicionarItem(it); busca.value = ''; fechar(); busca.focus(); }
+{% set d = edicao or rascunho %}{% if d %}({{ (d.itens or [])|tojson }}).forEach(it => adicionarItem(it));{% endif %}
+tipoMudou();
+</script>
+{% endblock %}

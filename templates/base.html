@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{% if nuvem %}
+<meta name="theme-color" content="#fbf7f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Central IPD">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icone-180.png') }}">
+{% endif %}
+<title>{% block titulo %}Central IPD{% endblock %} · Central IPD</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ versao_css }}">
+<script>try{if(localStorage.getItem('menuMini')==='1')document.documentElement.classList.add('menu-mini')}catch(e){}</script>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+</head>
+<body>
+{% set aba = request.endpoint or '' %}
+{% set em_fila = aba == 'fila' or (aba == 'ver_job' and job is defined and job.tipo == 'lote') %}
+{% set em_relatorios = aba in ('relatorios', 'listas') or (aba == 'ver_job' and not (job is defined and job.tipo in ('crm', 'lote', 'teto_ppi'))) %}
+{% set em_consorcios = aba.startswith('consorcio') %}
+{% set em_propostas = aba.startswith('proposta') %}
+{% set em_tabelas = aba.startswith('tabelas') or aba.startswith('conferencia') %}
+
+<aside class="side">
+  <a class="marca" href="{{ url_for('inicio') }}">
+    <img src="{{ url_for('static', filename='logo_ipd.png') }}" alt="ipd Exames e Saúde" class="logo-cheia">
+    <img src="{{ url_for('static', filename='favicon.png') }}" alt="ipd" class="logo-mini">
+  </a>
+
+  <a class="n {{ 'ativa' if aba == 'inicio' }}" href="{{ url_for('inicio') }}" data-curto="Início">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM10 21v-6h4v6"></path></svg><span class="rot">Início</span></a>
+
+  <div class="sec">Áreas</div>
+
+  <a class="n {{ 'ativa' if em_relatorios }}" href="{{ url_for('relatorios') }}" data-curto="Relatórios">
+    <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle></svg><span class="rot">Relatórios PPI / SISCAN</span></a>
+  {% if em_relatorios %}
+  <div class="sub">
+    <a class="n" href="{{ url_for('relatorios') }}">Gerar</a>
+    <a class="n" href="{{ url_for('listas') }}">Listas de consórcios</a>
+  </div>
+  {% endif %}
+
+  {% set n_fila = jobs_ativos|selectattr('tipo', 'in', ['lote', 'robo'])|list|length %}
+  <a class="n {{ 'ativa' if em_fila }}" href="{{ url_for('fila') }}" data-curto="Fila">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"></path></svg><span class="rot">Fila de relatórios{% if n_fila %} <span class="chip" style="padding:0 7px;font-size:11px">{{ n_fila }}</span>{% endif %}</span></a>
+
+  {% if not nuvem %}
+  <a class="n {{ 'ativa' if aba == 'metas_pagina' }}" href="{{ url_for('metas_pagina') }}" data-curto="Metas">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path></svg><span class="rot">Situação das metas</span></a>
+  {% endif %}
+
+  {# Teto PPI e Consórcios: também na nuvem, mas só no PC (o celular segue com o menu enxuto) #}
+  <a class="n {{ 'so-pc' if nuvem }} {{ 'ativa' if aba.startswith('teto_ppi') or (aba == 'ver_job' and job is defined and job.tipo == 'teto_ppi') }}" href="{{ url_for('teto_ppi_pagina') }}" data-curto="Teto">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 9v11M14 13h3M14 16h3"></path></svg><span class="rot">Teto PPI Varginha</span></a>
+
+  <a class="n {{ 'so-pc' if nuvem }} {{ 'ativa' if em_consorcios }}" href="{{ url_for('consorcios_pagina') }}" data-curto="Consórcios">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 20h18M5 20v-8M12 20V7M19 20V3"></path></svg><span class="rot">Consórcios</span></a>
+
+  <a class="n {{ 'ativa' if em_propostas }}" href="{{ url_for('propostas_pagina') }}" data-curto="Propostas">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h6"></path></svg><span class="rot">Propostas</span></a>
+  {% if em_propostas %}
+  <div class="sub">
+    <a class="n" href="{{ url_for('propostas_pagina') }}">Catálogo</a>
+    <a class="n" href="{{ url_for('proposta_nova') }}">Nova proposta</a>
+  </div>
+  {% endif %}
+
+  <a class="n {{ 'ativa' if em_tabelas }}" href="{{ url_for('tabelas_pagina') }}" data-curto="Tabelas">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M9 5v14"></path></svg><span class="rot">Tabelas de preço</span></a>
+  {% if em_tabelas %}
+  <div class="sub">
+    <a class="n" href="{{ url_for('tabelas_pagina') }}">Consultar</a>
+    <a class="n" href="{{ url_for('tabelas_conferencia') }}">Conferir arquivo</a>
+  </div>
+  {% endif %}
+
+  {% if not nuvem %}
+  <a class="n {{ 'ativa' if aba == 'painel_pagina' }}" href="{{ url_for('painel_pagina') }}" data-curto="Painel">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18M7 16v-4M12 16V8M17 16v-7"></path></svg><span class="rot">Painel comercial</span></a>
+
+  <a class="n {{ 'ativa' if aba.startswith('crm') or (aba == 'ver_job' and job is defined and job.tipo == 'crm') }}" href="{{ url_for('crm_pagina') }}" data-curto="CRM">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h10v4H4zM4 17h6v3H4z"></path></svg><span class="rot">CRM · GesMkt</span></a>
+
+  <a class="n novidade {{ 'ativa' if aba == 'jarvis_pagina' }}" href="{{ url_for('jarvis_pagina') }}" data-curto="Jarvis">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg><span class="rot">Jarvis</span></a>
+
+
+  <a class="n novidade {{ 'ativa' if request.path.startswith('/mapa') }}" href="{{ url_for('mapa3d_pagina') }}" data-curto="Mapa">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"></path><path d="M9 4v13M15 7v13"></path></svg><span class="rot">Mapa 3D</span></a>
+
+  {% endif %}
+  {% if mostrar_cidade %}
+  <a class="n novidade" href="{{ url_for('mundo') }}" data-curto="Cidade">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l4-3v14M13 21V4l6 4v13"></path></svg><span class="rot">Cidade 3D</span></a>
+  {% endif %}
+
+  <button type="button" class="n recolher" id="btn-recolher" title="Recolher menu">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg><span class="rot">Recolher menu</span></button>
+
+  {% if not acesso_local and com_senha %}
+  <a class="n sair" href="{{ url_for('sair') }}" data-curto="Sair">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"></path></svg><span class="rot">Sair</span></a>
+  {% endif %}
+</aside>
+
+<div class="conteudo">
+  <header class="topo">
+    <div class="tit">
+      <span class="crumb">Central IPD / <b>{% block crumb %}{{ self.titulo() }}{% endblock %}</b></span>
+      <small>Área de consultas comercial</small>
+    </div>
+    <div class="acoes-topo">
+      {% if jobs_ativos and aba not in ('ver_job', 'fila') %}
+      {% set ja = jobs_ativos[0] %}
+      <a class="btn" href="{{ url_for('fila') if ja.tipo == 'lote' else url_for('ver_job', job_id=ja.id) }}" title="{{ ja.titulo }}">
+        {{ 'Gerando' if ja.status == 'rodando' else 'Na fila' }}{% if ja.total %} {{ ja.feito }}/{{ ja.total }}{% endif %}{% if jobs_ativos|length > 1 %} · +{{ jobs_ativos|length - 1 }} na fila{% endif %} — ver progresso</a>
+      {% endif %}
+      {% block acoes_topo %}{% endblock %}
+    </div>
+    <a class="simbolo-topo" href="{{ url_for('inicio') }}" aria-label="Início"><img src="{{ url_for('static', filename='favicon.png') }}" alt="ipd"></a>
+  </header>
+
+  <main class="{{ 'sub' if aba not in ('inicio', 'login') and not request.path.startswith('/mapa') }}">
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in mensagens %}
+      <div class="flash {{ cat }}"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <footer class="rodape-site">
+    <div>
+      <span>Acesso rápido</span>
+      {% for l in links_externos %}
+      <a class="btn" href="{{ l.url }}" target="_blank" rel="noopener" title="{{ l.descricao }} — abre no seu navegador, com o seu login">
+        {{ l.nome }}<svg class="ic ic-xs" viewBox="0 0 24 24"><path d="M10 14L21 3M15 3h6v6"></path></svg></a>
+      {% endfor %}
+    </div>
+  </footer>
+</div>
+
+<script>window.ACESSO_LOCAL = {{ 'true' if acesso_local else 'false' }};</script>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ versao_css }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

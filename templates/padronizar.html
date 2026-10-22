@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titulo %}Padronizar arquivo{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('padronizados')">Abrir pasta</button>
+{% if r %}<a class="btn" href="{{ url_for('padronizar_pagina') }}">Padronizar outro</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Ferramenta', 'Padronizar arquivo', '<path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z"></path>') %}Envie uma planilha, um documento Word ou imagens e receba com a identidade do IPD: cabeçalho e rodapé do papel timbrado e a fonte da casa. Planilhas viram tabela com cabeçalho vermelho e valores em R$ (Excel, Word e/ou PDF); documentos Word ganham o timbrado sem mudar o texto; imagens viram um documento A4, uma por página. O conteúdo continua igual, só a apresentação muda.{% endcall %}
+
+{% if r %}
+<div class="cartao">
+  <div class="entre">
+    <h2>{{ r.titulo }}</h2>
+    <div style="display:flex;gap:8px">
+      {% set rotulos = {'xlsx': 'Excel', 'docx': 'Word', 'pdf': 'PDF'} %}
+      {% for a in r.arquivos %}
+      <a class="btn primario pequeno" href="{{ url_for('padronizado_arquivo', nome=a.nome) }}"{{ ' target=_blank' if a.fmt == 'pdf' }}>{{ 'Abrir' if a.fmt == 'pdf' else 'Baixar' }} {{ rotulos[a.fmt] }}</a>{% if a.fmt == 'pdf' %}<a class="btn pequeno" href="{{ url_for('padronizado_arquivo', nome=a.nome) }}" download><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>Baixar PDF</a>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <p>Origem: {{ r.origem }}</p>
+  {% if r.tipo != 'planilha' %}
+  <div class="rolagem mt-s"><table class="dados">
+    <tr><th>{{ 'Imagem' if r.tipo == 'imagem' else 'Arquivo' }}</th><th>Detalhe</th></tr>
+    {% for a in r.abas %}<tr><td>{{ a.item }}</td><td class="dim">{{ a.detalhe }}</td></tr>{% endfor %}
+  </table></div>
+  {% else %}
+  <div class="rolagem mt-s"><table class="dados">
+    <tr><th>Aba</th><th class="n">Linhas</th><th class="n">Colunas</th><th>Colunas somadas</th></tr>
+    {% for a in r.abas %}
+    <tr><td>{{ a.aba }}</td><td class="n">{{ a.linhas|num }}</td><td class="n">{{ a.colunas }}</td><td class="dim">{{ a.somadas|join(', ') or '—' }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="cartao{{ ' mt' if r }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <h2>Arquivo</h2>
+  <div class="campo mt"><label>Planilha (.xlsx, .xlsm, .csv, .tsv, .txt), documento Word (.docx) ou imagens (.png, .jpg), até 20 MB cada. Imagens podem ir várias de uma vez.</label>
+    <input type="file" name="arquivo" accept=".xlsx,.xlsm,.csv,.tsv,.txt,.docx,.png,.jpg,.jpeg" multiple required></div>
+  <div class="campo"><label>Título</label>
+    <input type="text" name="titulo" placeholder="se deixar vazio, usa o nome do arquivo"></div>
+  <div class="campo"><label>Subtítulo</label>
+    <input type="text" name="subtitulo" placeholder="se deixar vazio: ipd Exames e Saúde · gerado em (data)"></div>
+  <div class="campo" data-selecao><label>Gerar em</label>
+    <label><input type="checkbox" name="fmt_xlsx"> Excel (.xlsx)</label>
+    <label><input type="checkbox" name="fmt_docx" checked> Word (.docx)</label>
+    <label><input type="checkbox" name="fmt_pdf" checked> PDF</label>
+    <span class="dica">Excel só para planilhas. Word e PDF aceitam até 5.000 linhas por aba.</span>
+  </div>
+  <div class="campo" data-selecao><label>Opções de padronização</label>
+    <label><input type="checkbox" name="logo" checked> Cabeçalho e rodapé do IPD (papel timbrado)</label>
+    <label><input type="checkbox" name="zebra" checked> Linhas zebradas (planilhas)</label>
+    <label><input type="checkbox" name="totais"> Linha de TOTAL nas colunas numéricas (planilhas)</label>
+    <label><input type="checkbox" name="ocr"> Imagens: converter a foto da tabela em texto editável (OCR)</label>
+    <span class="dica">Com o OCR, a foto vira uma tabela de verdade (dá para gerar Excel também). Confira o resultado: letra borrada ou foto torta pode sair com erro.</span>
+  </div>
+  <div class="mt"><button class="btn primario" type="submit">Padronizar<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button></div>
+</form>
+
+{% if recentes %}
+<div class="secao mt">Padronizados recentemente</div>
+<div class="cartao" style="padding:0">
+  <div class="rolagem"><table class="dados">
+    <tr><th>Arquivo</th><th>Gerado</th><th class="n">Tamanho</th><th></th></tr>
+    {% for a in recentes %}
+    <tr><td>{{ a.nome }}</td><td class="dim">{{ a.ts|dataarq }}</td><td class="n">{{ a.kb }} KB</td>
+      <td class="a"><a class="btn pequeno" href="{{ url_for('padronizado_arquivo', nome=a.nome) }}"{{ ' target=_blank' if a.nome.endswith('.pdf') }}>{{ 'Abrir' if a.nome.endswith('.pdf') else 'Baixar' }}</a>{% if a.nome.endswith('.pdf') %} <a class="btn pequeno" href="{{ url_for('padronizado_arquivo', nome=a.nome) }}" download title="Baixar PDF"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></a>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

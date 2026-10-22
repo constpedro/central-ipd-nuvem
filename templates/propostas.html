@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block titulo %}Propostas{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('propostas')">Abrir pasta</button>
+<a class="btn primario" href="{{ url_for('proposta_nova') }}"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Nova proposta</a>
+{% endblock %}
+
+{% block conteudo %}
+
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('plum', 'Comercial', 'Propostas', '<path d="M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h6"></path>') %}Propostas geradas pela Central. Próximo número sugerido em {{ ano_atual }}: <strong>{{ '%03d' % proximo }}/{{ ano_atual }}</strong> (editável na hora de gerar).{% endcall %}
+
+<div class="cartao">
+  <form method="get" class="entre">
+    <h2>Catálogo <span class="dim" style="font-weight:500;font-size:13px">· {{ total }} arquivos</span></h2>
+    <div class="busca-acoes"><input type="text" name="q" style="min-width:300px" value="{{ q }}" placeholder="Buscar por cliente, número ou arquivo" title="cliente, número ou parte do nome do arquivo"><button class="btn" type="submit">Buscar</button>{% if filtrando %}<a class="btn" href="{{ url_for('propostas_pagina') }}">Limpar</a>{% endif %}</div>
+    <div class="busca-acoes filtros mt-s" style="flex-wrap:wrap">
+      {% macro filtro(nome, rotulo, opcoes) %}<select name="{{ nome }}" onchange="this.form.submit()"><option value="">{{ rotulo }}</option>{% for k, v in opcoes.items() %}<option value="{{ k }}" {{ 'selected' if f[nome] == k }}>{{ v }}</option>{% endfor %}</select>{% endmacro %}
+      {{ filtro('tipo_orcamento', 'Tipo de orçamento: todos', classif.tipo_orcamento) }}
+      {{ filtro('cliente_categoria', 'Cliente: todos', classif.cliente_categoria) }}
+      {{ filtro('cliente_situacao', 'Novo ou atual', classif.cliente_situacao) }}
+      {{ filtro('produto', 'Produto: todos', classif.produtos) }}
+      {{ filtro('etapa', 'Etapa: todas', classif.etapa) }}
+    </div>
+  </form>
+  {% if itens %}
+  <div class="rolagem mt-s"><table class="dados cel-cartoes">
+    <tr><th>Nº</th><th>Cliente</th><th>Arquivo</th><th>Origem</th><th>Modificado</th><th></th></tr>
+    {% for i in itens %}
+    <tr><td class="mono cel-n1"><strong>{{ '%03d' % i.numero }}</strong>{% if i.ano %}<span class="dim">/{{ i.ano }}</span>{% endif %}</td>
+      <td class="cel-cheio cel-n3">{{ i.cliente }}{% if i.rotulos %}<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">{% for r in i.rotulos %}<span class="chip neutro" style="font-size:11px">{{ r }}</span>{% endfor %}</div>{% endif %}</td>
+      <td class="dim cel-esconde" style="font-size:12.5px">{{ i.arquivo }}</td>
+      <td class="cel-esconde"><span class="chip neutro">{{ i.origem }}</span></td>
+      <td class="dim cel-n2 cel-direita">{{ i.modificado }}</td>
+      <td class="cel-cheio cel-n4" style="white-space:nowrap"><a class="btn pequeno" href="{{ url_for('proposta_abrir', c=i.caminho) }}" target="_blank">{{ 'Abrir PDF' if i.tipo == 'pdf' else 'Baixar .docx' }}</a>{% if i.editar and i.tipo == 'docx' %} <a class="btn pequeno" href="{{ url_for('proposta_editar', p=i.editar) }}" title="Reabre para acrescentar ou ajustar exames, sem refazer a proposta">+ exames</a>{% endif %}{% if i.editar and i.tipo == 'docx' %} <form method="post" action="{{ url_for('proposta_excluir') }}" style="display:inline" onsubmit="return confirm('Excluir a proposta {{ '%03d' % i.numero }}/{{ i.ano }} – {{ i.cliente|e }}?
+
+Ela sai do catálogo e o número {{ '%03d' % i.numero }} fica livre para a próxima proposta.')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="p" value="{{ i.editar }}"><button class="btn pequeno perigo" type="submit">Excluir</button></form>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if total > itens|length %}<p class="dim mt-s" style="font-size:12.5px">Mostrando {{ itens|length }} de {{ total }} — refine a busca.</p>{% endif %}
+  {% else %}<div class="vazio mt-s">{{ 'Nada encontrado com esses filtros.' if filtrando else 'Nenhuma proposta gerada ainda — clique em "Nova proposta".' }}</div>{% endif %}
+</div>
+{% endblock %}

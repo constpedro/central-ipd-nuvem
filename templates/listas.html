@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Listas de consórcios{% endblock %}
+{% block crumb %}Relatórios / <b>Listas de consórcios</b>{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('listas')">Abrir pasta</button>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('blue', 'Relatórios', 'Listas de consórcios', '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path>') %}Cada lista é um consórcio (ou qualquer grupo de municípios). Servem tanto para gerar os PDFs em lote quanto para o relatório por consórcio.{% endcall %}
+
+{% set em_edicao = (listas | selectattr('nome', 'equalto', editar) | list | first) if editar else none %}
+<div class="grade c2i">
+  <div class="cartao">
+    <h2>Listas salvas</h2>
+    {% if listas %}
+    <div class="rolagem mt-s"><table class="dados" data-filtro>
+      <tr><th>Nome</th><th class="n">Cidades</th><th></th></tr>
+      {% for l in listas %}
+      <tr title="{{ l.cidades|join(', ') }}"><td><strong>{{ l.titulo }}</strong> <span class="dim mono" style="font-size:11px">{{ l.nome }}.txt</span></td>
+        <td class="n">{{ l.cidades|length }}</td>
+        <td style="white-space:nowrap"><a class="btn pequeno" href="{{ url_for('listas', editar=l.nome) }}">Editar</a>
+          <form method="post" style="display:inline" onsubmit="return confirm('Apagar a lista {{ l.nome }}?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="acao" value="apagar"><input type="hidden" name="nome" value="{{ l.nome }}"><button class="btn pequeno perigo" type="submit">Apagar</button></form></td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<div class="vazio mt-s">Nenhuma lista ainda.</div>{% endif %}
+  </div>
+
+  <form method="post" class="cartao"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <h2>{{ 'Editar lista' if em_edicao else 'Nova lista' }}</h2>
+    <p>Uma cidade por linha, com o nome como está no PPI (acentos importam).</p>
+    <input type="hidden" name="acao" value="salvar">
+    <div class="linha campo mt">
+      <div class="campo"><label>Título (como aparece nas telas)</label><input type="text" name="titulo" value="{{ em_edicao.titulo if em_edicao else '' }}" placeholder="ex.: CIS São Lourenço"></div>
+      <div class="campo"><label>Nome do arquivo</label><input type="text" name="nome" value="{{ em_edicao.nome if em_edicao else '' }}" placeholder="ex.: cis_sao_lourenco" required></div>
+    </div>
+    <div class="campo"><label>Cidades</label><textarea name="cidades" style="min-height:320px" required>{{ em_edicao.cidades|join('\n') if em_edicao else '' }}</textarea></div>
+    <div class="mt" style="display:flex;gap:10px"><button class="btn primario" type="submit">Salvar lista</button>{% if em_edicao %}<a class="btn" href="{{ url_for('listas') }}">Cancelar</a>{% endif %}</div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+{% block titulo %}Painel comercial{% endblock %}
+{% block acoes_topo %}
+<button class="btn" id="btn-atualizar">Atualizar do GesMkt</button>
+<button class="btn primario" id="btn-pdf">Gerar relatório PDF</button>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Comercial', 'Painel comercial', '<path d="M3 3v18h18M7 16v-4M12 16V8M17 16v-7"></path>') %}Resumo das negociações registradas no GesMkt: andamento, ganhos, perdas, funil por etapa e desempenho por responsável. O GesMkt é lento, então o painel mostra a última leitura e busca uma nova em segundo plano a cada 30 min (ou ao clicar em "Atualizar do GesMkt"). <span class="dim" id="upd"></span>{% endcall %}
+
+<style>
+.pn-filtros{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:24px}
+.pn-filtros label{font-size:13px;font-weight:600}.pn-filtros label+select+label{margin-left:28px}.pn-filtros select{width:auto}
+.pn-grade{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
+.pn-grade>.cartao{margin:0}.w6{grid-column:span 6}.w4{grid-column:span 4}.w8{grid-column:span 8}.w12{grid-column:span 12}
+.pn-t{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+.pn-bar{display:flex;align-items:center;gap:12px;margin:9px 0}.pn-bar .n{width:100px;font-size:13px;color:var(--ink-2)}
+.pn-bar .t{flex:1;background:var(--bg);height:10px;border-radius:2px;overflow:hidden}.pn-bar .f{height:100%;background:var(--blue)}
+.pn-bar .q{width:140px;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums}
+.pn-cols{display:flex;align-items:flex-end;gap:14px;height:180px;border-bottom:1px solid var(--line)}
+.pn-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.pn-col .f{width:60%;background:var(--green);min-height:1px;border-radius:2px 2px 0 0}.pn-col b{font-size:12.5px;font-weight:600}
+.pn-lbl{display:flex;gap:14px;margin-top:6px}.pn-lbl div{flex:1;text-align:center;font-size:11.5px;color:var(--ink-3);line-height:1.3}
+.pn-al{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.pn-al b{font-size:16px;font-weight:600;color:var(--ink)}.pn-al.r b{color:var(--brand)}
+.pn-lst{max-height:230px;overflow:auto;font-size:12.5px;color:var(--ink-2)}.pn-lst div{padding:5px 0;border-bottom:1px dashed var(--line)}
+table.dados td.num,table.dados th.num{text-align:right;font-variant-numeric:tabular-nums}
+@media(max-width:1100px){.w6,.w4,.w8{grid-column:span 12}}
+.pn-imp{display:none}.so-pdf{display:none}
+.pz-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.pz .dim{font-size:12px;padding:30px 0}
+.ev{display:flex;align-items:flex-end;gap:6px;height:130px;border-bottom:1px solid var(--line)}.ev-c{flex:1;height:100%;display:flex;flex-direction:column;align-items:center}
+.ev-b{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:1px}.ev-b i{width:26%;min-height:1px;border-radius:2px 2px 0 0}.ev-b .n{background:#9bb3cc}.ev-b .g{background:var(--green)}.ev-b .p{background:#c9a3a6}
+.ev-c small{font-size:9.5px;color:var(--ink-3);margin-top:3px}.so-pdf .pn-leg{margin:6px 0 10px}td.cort{max-width:300px;overflow:hidden;text-overflow:ellipsis}.pz-t{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+.pz-c{display:flex;flex-direction:column;align-items:center;gap:8px}.pz-l{width:100%}.pz-l{flex:1;min-width:0;font-size:10.5px;line-height:1.35}
+.pz-l div{display:flex;align-items:center;gap:5px;margin:2px 0}.pz-l i{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.pz-l span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pz-l b{font-weight:600;white-space:nowrap}
+.ld{display:grid;grid-template-columns:1fr 1fr;gap:22px}.ld ul{margin:0;padding-left:18px;font-size:12px;line-height:1.5}.ld li{margin:4px 0}
+.ld-t{font-size:12.5px;font-weight:600;margin-bottom:6px;padding-left:8px;border-left:3px solid}.ld-t.ok{color:var(--green);border-color:var(--green)}.ld-t.no{color:var(--brand);border-color:var(--brand)}
+@media print{
+  @page{size:A4;margin:12mm 11mm}
+  html,body{background:#fff!important}body{display:block}
+  .so-pdf{display:block!important;margin-bottom:12px}
+  .side,.topo,.pn-filtros,.mod-cab,.rodape-site,.so-tela,#pn-modal,.pn-pers{display:none!important}
+  main,main.sub{padding:0!important;max-width:none!important}
+  .kpi,.area,.cartao{animation:none!important;opacity:1!important;transform:none!important}
+  .cartao,main.sub .cartao{border:1px solid var(--line)!important;border-radius:4px!important;box-shadow:none!important;padding:14px 16px!important;break-inside:avoid}
+  .kpis{border-radius:4px!important;margin-bottom:14px!important;flex-wrap:nowrap!important}.kpi{flex:1 1 0!important;padding:10px 12px!important}.kpi strong{font-size:18px!important}
+  table.pn-compacta th,table.pn-compacta td{padding:5px 8px}
+  .pn-grade{gap:12px;grid-template-columns:repeat(12,1fr)!important}.w6{grid-column:span 6!important}.w8{grid-column:span 12!important}.w4{grid-column:span 12!important}.w12{grid-column:span 12!important}
+  .pn-imp{display:flex;align-items:center;gap:16px;padding-bottom:10px;margin-bottom:14px;border-bottom:2px solid var(--brand)}
+  .pn-imp img{height:38px}.pn-imp h1{font-size:18px;margin:0}.pn-imp p{margin:2px 0 0;font-size:11.5px;color:var(--ink-3)}
+  .pn-lst{max-height:none}.rolagem{overflow:visible!important;max-height:none!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+.pn-cab{display:flex;justify-content:space-between;gap:10px}.pn-cab a{color:var(--brand);text-transform:none;letter-spacing:0;font-weight:500}
+.pn-pers{padding:14px 16px;margin:-2px 0 16px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius)}
+.pn-pers[hidden]{display:none}.pn-pers .tit{font-size:12.5px;color:var(--ink-2);margin-bottom:10px}
+.pn-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pn-chips label{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line-2);border-radius:999px;background:#fff;color:var(--ink-3);font-size:12.5px;cursor:pointer;user-select:none;transition:border-color .2s,background-color .2s,color .2s}
+.pn-chips label:hover{border-color:var(--ink-3)}
+.pn-chips label:has(input:checked){background:var(--brand-bg);border-color:var(--brand);color:var(--brand);font-weight:500}
+.pn-chips label:has(input:checked)::before{content:'✓';font-size:11px;font-weight:700}
+.pn-chips input{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
+.pn-pers .acoes{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+table.pn-compacta th,table.pn-compacta td{padding:6px 10px;white-space:nowrap}.pn-nota{font-size:11.5px;margin-top:8px}
+.pn-lst div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pn-aba{cursor:pointer}.pn-aba:hover{background:var(--bg-2)}.pn-aba.sel{background:var(--brand-bg);box-shadow:inset 0 -2px 0 var(--brand)}
+.pn-clica{cursor:pointer;transition:border-color .2s}.pn-clica:hover{border-color:var(--line-2)!important}
+.pn-modal{position:fixed;inset:0;background:rgba(20,22,27,.35);z-index:1000;display:flex;justify-content:center;align-items:flex-start;padding:30px 16px;overflow:auto}
+.pn-modal[hidden]{display:none}.pn-modal>.cartao{width:100%;max-width:1150px;margin:0}
+.pn-mcab{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.pn-mcab h2{font-size:17px}
+.pn-mtopo{display:grid;grid-template-columns:2fr 2fr 1.3fr 1.3fr;gap:14px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.pn-mtopo .cp{display:flex;flex-direction:column;gap:5px;min-width:0}.pn-mtopo label{font-size:12px;font-weight:600;color:var(--ink-2)}
+@media(max-width:800px){.pn-mtopo{grid-template-columns:1fr 1fr}}
+.pn-cols2{display:flex;align-items:flex-end;gap:6px;height:220px;border-bottom:1px solid var(--line)}
+.pn-c2{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%;cursor:pointer;border-radius:3px}
+.pn-c2:hover,.pn-c2.sel{background:var(--bg)}.pn-c2 .g{background:var(--green)}.pn-c2 .p{background:#c9a3a6}.pn-c2>div{width:38%;min-height:1px;border-radius:2px 2px 0 0}
+.pn-leg{display:flex;gap:16px;font-size:12px;color:var(--ink-3);margin:8px 0 18px}.pn-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.pn-dois{display:grid;grid-template-columns:3fr 2fr;gap:22px}@media(max-width:1000px){.pn-dois{grid-template-columns:1fr}}
+.pn-sim{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.pn-sim .lin{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;font-size:13px}.pn-sim input{width:130px;text-align:right}
+.pn-sim .res{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}.pn-sim .res b{font-size:18px}
+</style>
+
+<div class="pn-imp"><img src="{{ url_for('static', filename='logo_ipd.png') }}" alt="IPD"><div><h1>Relatório comercial</h1><p id="imp-sub"></p></div></div>
+<div class="cartao pn-filtros">
+  <label for="fFunil">Funil</label>
+  <select id="fFunil" style="min-width:260px"><option value="-1">Todos os funis</option></select>
+  <label for="fPer">Período</label>
+  <select id="fPer" style="min-width:180px"><option value="mes">Este mês</option><option value="tri">Últimos 90 dias</option><option value="ano">Este ano</option></select>
+</div>
+<div id="pn"><div class="cartao">Carregando dados do GesMkt…</div></div>
+<div class="pn-modal" id="pn-modal" hidden onclick="if (event.target === this) fecharAnalise()"><div class="cartao" id="pn-an"></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  let FUNIS = [], DEALS = [], OCULTOS = [], DADOS_DE = '';
+  const HOJE = new Date().toISOString().slice(0, 10);
+  const ETAPAS = ['Prospecte','Qualificado','Abordagem','Proposta','Negociação','Implantação','Operação','Remarketing'];
+  const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const brl = v => v.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL', maximumFractionDigits: 0});
+  function esc(v) { const el = document.createElement('span'); el.textContent = v == null ? '' : String(v); return el.innerHTML; }
+  const sf = document.getElementById('fFunil'), sp = document.getElementById('fPer'), box = document.getElementById('pn');
+  const QS = new URLSearchParams(location.search);
+  if (QS.get('per')) sp.value = QS.get('per');
+  sf.onchange = sp.onchange = desenhar;
+  document.getElementById('btn-pdf').onclick = function () {
+    const b = this; b.disabled = true; b.textContent = 'Gerando PDF…';
+    window.open('{{ url_for("painel_pdf") }}?funil=' + sf.value + '&per=' + sp.value, '_blank');
+    setTimeout(() => { b.disabled = false; b.textContent = 'Gerar relatório PDF'; }, 4000);
+  };
+
+  function inicio(p) {
+    if (p === 'mes') return HOJE.slice(0, 8) + '01';
+    if (p === 'ano') return HOJE.slice(0, 5) + '01-01';
+    const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10);
+  }
+
+  let espera = null;
+  function carregar(forcar) {
+    clearTimeout(espera);
+    if (!DEALS.length) box.innerHTML = '<div class="cartao">Carregando dados do GesMkt…</div>';
+    fetch('{{ url_for("api_painel_dados") }}' + (forcar ? '?forcar=1' : '')).then(r => r.json()).then(j => {
+      const upd = document.getElementById('upd');
+      if (!j.deals) {
+        if (j.lendo) { box.innerHTML = '<div class="cartao">Buscando as negociações no GesMkt pela primeira vez. O GesMkt é lento, isso pode levar alguns minutos; a página atualiza sozinha.</div>'; espera = setTimeout(() => carregar(false), 15000); }
+        else box.innerHTML = '<div class="cartao">Não foi possível ler o GesMkt: ' + esc(j.erro) + '</div>';
+        return;
+      }
+      FUNIS = j.funis; DEALS = j.deals; OCULTOS = j.ocultos || []; DADOS_DE = j.atualizado;
+      upd.textContent = 'Dados de ' + j.atualizado + '.' + (j.lendo ? ' Buscando versão mais nova no GesMkt…' : '')
+        + (j.erro_leitura ? ' Última tentativa de atualizar falhou: ' + j.erro_leitura : '');
+      if (j.lendo) espera = setTimeout(() => carregar(false), 15000);
+      const v = sf.value;
+      sf.innerHTML = '<option value="-1">Todos os funis</option>' + FUNIS.map((f, i) => `<option value="${i}">${esc(f)}</option>`).join('');
+      sf.value = QS.get('funil') && !sf.dataset.ok ? QS.get('funil') : v; sf.dataset.ok = 1; if (sf.selectedIndex < 0) sf.value = '-1';
+      desenhar();
+    }).catch(() => { if (!DEALS.length) box.innerHTML = '<div class="cartao">Sem conexão com o servidor.</div>'; });
+  }
+  document.getElementById('btn-atualizar').onclick = () => carregar(true);
+
+  // ---------- personalizar quem/quais aparecem (fica salvo neste computador) ----------
+  // PERS[tipo] = lista escolhida; null = padrão (os 6 maiores, que vêm primeiro na ordem)
+  const PERS = {resp: null, funis: null}, PADRAO = 6, ABERTO = {};
+  try { const s = JSON.parse(localStorage.getItem('painel-pers') || '{}'); Object.assign(PERS, s); } catch (e) { /* sem armazenamento: usa padrão */ }
+  const ORDEM = {};
+  function salvarPers() { try { localStorage.setItem('painel-pers', JSON.stringify(PERS)); } catch (e) { /* ignora */ } }
+  function mostra(tipo, nome) {
+    if (tipo === 'resp' && OCULTOS.includes(nome)) return false;
+    const i = ORDEM[tipo].indexOf(nome);
+    return PERS[tipo] ? PERS[tipo].includes(nome) : i >= 0 && i < PADRAO;
+  }
+  function curto(n) { const p = n.split(' '); return p.length > 2 ? p[0] + ' ' + p[p.length - 1] : n; }
+  function cabPers(titulo, tipo, nomes) {
+    ORDEM[tipo] = nomes;
+    const n = nomes.filter(x => mostra(tipo, x)).length;
+    return `<div class="pn-t pn-cab"><span>${esc(titulo)}</span><a href="#" class="so-tela" data-pers="${tipo}">Personalizar (${n} de ${nomes.length})</a></div>
+      <div class="pn-pers" ${ABERTO[tipo] ? '' : 'hidden'}>
+        <div class="tit">Clique para escolher ${tipo === 'resp' ? 'quem aparece' : 'quais funis aparecem'} na tabela. Fica salvo neste computador.</div>
+        <div class="pn-chips">${nomes.map(x => `<label><input type="checkbox" data-tipo="${tipo}" value="${esc(x)}" ${mostra(tipo, x) ? 'checked' : ''}>${esc(tipo === 'resp' ? curto(x) : x)}</label>`).join('')}</div>
+        <div class="acoes"><button type="button" class="btn pequeno" data-padrao="${tipo}">Padrão (${PADRAO} maiores)</button>
+          <button type="button" class="btn pequeno primario" data-pers="${tipo}">Concluir</button></div></div>`;
+  }
+  box.addEventListener('click', e => {
+    const a = e.target.closest('[data-pers],[data-padrao]'); if (!a) return;
+    e.preventDefault();
+    if (a.dataset.pers) ABERTO[a.dataset.pers] = !ABERTO[a.dataset.pers];
+    else { PERS[a.dataset.padrao] = null; salvarPers(); }
+    desenhar();
+  });
+  box.addEventListener('change', e => {
+    const c = e.target; if (!c.dataset.tipo) return;
+    PERS[c.dataset.tipo] = [...box.querySelectorAll(`input[data-tipo="${c.dataset.tipo}"]:checked`)].map(i => i.value);
+    salvarPers(); desenhar();
+  });
+
+  // ---------- só no PDF: pizzas e leitura do período ----------
+  const CORES = ['#2b5a8a', '#c81e2b', '#2c6b3f', '#9a6b12', '#5a4f78', '#0e7d8c', '#a3a8b4'];
+  function pizza(titulo, itens, fmt) {
+    // itens: [[nome, valor]] — mostra os 6 maiores e junta o resto em "Outros"
+    itens = itens.filter(i => i[1] > 0).sort((a, b) => b[1] - a[1]);
+    if (itens.length > 7) itens = itens.slice(0, 6).concat([['Outros', itens.slice(6).reduce((s, i) => s + i[1], 0)]]);
+    const tot = itens.reduce((s, i) => s + i[1], 0);
+    if (!tot) return `<div class="pz"><div class="pz-t">${titulo}</div><div class="dim">Sem dados no período.</div></div>`;
+    const R = 15.915, C = 2 * Math.PI * R; let ac = 0;
+    const arcos = itens.map((it, k) => { const f = it[1] / tot, s = `<circle r="${R}" cx="21" cy="21" fill="none" stroke="${CORES[k]}" stroke-width="7" stroke-dasharray="${f * C} ${C}" stroke-dashoffset="${-ac * C}" transform="rotate(-90 21 21)"/>`; ac += f; return s; }).join('');
+    return `<div class="pz"><div class="pz-t">${titulo}</div><div class="pz-c"><svg viewBox="0 0 42 42" width="128" height="128">${arcos}<text x="21" y="22.5" text-anchor="middle" font-size="5.2" font-weight="600" fill="#14161b">${fmt(tot)}</text></svg>
+      <div class="pz-l">${itens.map((it, k) => `<div><i style="background:${CORES[k]}"></i><span>${esc(it[0])}</span><b>${fmt(it[1])} · ${Math.round(100 * it[1] / tot)}%</b></div>`).join('')}</div></div></div>`;
+  }
+  function leitura(c) {
+    const bom = [], ruim = [], pct = (a, b) => b ? Math.round(100 * a / b) : 0;
+    const fech = c.gp.length + c.pp.length;
+    if (fech >= 5 && c.conv >= 60) bom.push(`Conversão de <b>${c.conv}%</b> ${c.pl}: de cada 10 negociações fechadas, ${Math.round(c.conv / 10)} foram ganhas.`);
+    if (fech >= 5 && c.conv < 40) ruim.push(`Conversão baixa ${c.pl}: <b>${c.conv}%</b> das negociações fechadas foram ganhas.`);
+    if (c.gp.length) bom.push(`<b>${c.gp.length}</b> negociações ganhas ${c.pl}, somando <b>${brl(c.sumGp)}</b>.`);
+    const fsOk = c.fs.filter(f => f[2] + f[3] >= 5);
+    if (fsOk.length) {
+      const m = fsOk.slice().sort((a, b) => b[2] / (b[2] + b[3]) - a[2] / (a[2] + a[3]))[0];
+      bom.push(`Melhor funil: <b>${esc(m[0])}</b>, com ${pct(m[2], m[2] + m[3])}% de conversão (${m[2]} ganhas).`);
+      const p = fsOk.slice().sort((a, b) => a[2] / (a[2] + a[3]) - b[2] / (b[2] + b[3]))[0];
+      if (p !== m && pct(p[2], p[2] + p[3]) < 60) ruim.push(`Funil com mais perdas: <b>${esc(p[0])}</b>, ${p[3]} perdidas e só ${pct(p[2], p[2] + p[3])}% de conversão.`);
+    }
+    const top = c.rs.filter(r => r[1].g > 0)[0];
+    if (top) bom.push(`Quem mais fechou ${c.pl}: <b>${esc(top[0])}</b>, com ${top[1].g} negociações ganhas.`);
+    if (c.novas.length) bom.push(`<b>${c.novas.length}</b> negociações novas entraram no funil ${c.pl}.`);
+    // queda de registro: últimos 2 meses muito abaixo do melhor mês dos 6
+    const mx = Math.max(...c.gm.map(a => a.length)), ult = c.gm.slice(-2).reduce((s, a) => s + a.length, 0);
+    if (mx >= 10 && ult < mx * 0.25) ruim.push(`Quase nenhuma negociação foi marcada como ganha nos últimos 2 meses (${ult}, contra ${mx} no melhor mês). Provavelmente os fechamentos não estão sendo registrados no GesMkt.`);
+    if (c.semg.length) ruim.push(`<b>${c.semg.length}</b> negociações estão em Implantação ou Operação mas continuam abertas: provavelmente já fecharam e não foram marcadas como <b>ganhas</b> (${brl(c.semg.reduce((s, d) => s + d[5], 0))}).`);
+    if (c.atras.length) ruim.push(`<b>${c.atras.length}</b> negociações com atividade vencida (a data agendada já passou e ninguém concluiu ou remarcou).`);
+    if (c.recentes.length && pct(c.semat.length, c.recentes.length) >= 30) ruim.push(`<b>${pct(c.semat.length, c.recentes.length)}%</b> das negociações em andamento criadas este ano estão sem próxima atividade agendada (${c.semat.length}).`);
+    if (c.recentes.length && pct(c.semv.length, c.recentes.length) >= 30) ruim.push(`<b>${pct(c.semv.length, c.recentes.length)}%</b> estão sem valor preenchido (${c.semv.length}), o que deixa os totais em R$ abaixo do real.`);
+    const parados = c.rs.filter(r => r[1].a >= 50 && r[1].g === 0).map(r => esc(r[0]));
+    if (parados.length && c.gp.length) ruim.push(`Sem nenhuma negociação ganha ${c.pl}, apesar de muitas em andamento: <b>${parados.join(', ')}</b>.`);
+    const li = a => a.length ? a.map(x => `<li>${x}</li>`).join('') : '<li class="dim">Nada a destacar.</li>';
+    return `<div class="cartao so-pdf"><div class="pn-t">Leitura do período</div><div class="ld">
+      <div><div class="ld-t ok">Pontos positivos</div><ul>${li(bom)}</ul></div>
+      <div><div class="ld-t no">Pontos de atenção</div><ul>${li(ruim)}</ul></div></div></div>`;
+  }
+
+  function desenhar() {
+    const fi = +sf.value, per = sp.value, de = inicio(per);
+    const sum = a => a.reduce((s, d) => s + d[5], 0);
+    const ds = DEALS.filter(d => fi < 0 || d[0] === fi);
+    const ab = ds.filter(d => d[4] === 'a'), gp = ds.filter(d => d[4] === 'g' && d[7] >= de), pp = ds.filter(d => d[4] === 'p' && d[7] >= de);
+    const novas = ds.filter(d => d[6] >= de);
+    const conv = gp.length + pp.length ? Math.round(100 * gp.length / (gp.length + pp.length)) : 0;
+    const ms = []; const t = new Date();
+    for (let i = 5; i >= 0; i--) { const x = new Date(t.getFullYear(), t.getMonth() - i, 1); ms.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
+    const gm = ms.map(m => ds.filter(d => d[4] === 'g' && d[7].startsWith(m))); const mx = Math.max(1, ...gm.map(a => a.length));
+    const et = ETAPAS.map(e => ab.filter(d => d[2] === e)); const me = Math.max(1, ...et.map(a => a.length));
+    const R = {};
+    ds.forEach(d => { const r = R[d[3]] || (R[d[3]] = {a: 0, g: 0, p: 0, v: 0, n: 0});
+      if (d[4] === 'a') { r.a++; r.v += d[5]; }
+      if (d[7] >= de) { if (d[4] === 'g') r.g++; if (d[4] === 'p') r.p++; }
+      if (d[6] >= de) r.n++; });
+    const rs = Object.entries(R).filter(([n]) => !OCULTOS.includes(n)).sort((a, b) => b[1].g - a[1].g || b[1].a - a[1].a);
+    // pontos de atenção: só deste ano e só dos responsáveis escolhidos em "Personalizar"
+    ORDEM.resp = rs.map(r => r[0]);
+    const ANO = HOJE.slice(0, 4) + '-01-01', vigia = ab.filter(d => mostra('resp', d[3]));
+    const atras = vigia.filter(d => d[8] >= ANO && d[8] < HOJE), recentes = vigia.filter(d => d[6] >= ANO);
+    const semv = recentes.filter(d => !d[5]), semat = recentes.filter(d => !d[8]);
+    const semg = vigia.filter(d => d[2] === 'Implantação' || d[2] === 'Operação');  // já fecharam, mas ninguém marcou como ganha
+    AT.listas = {atras, semat, semv, semg};
+    const fs = FUNIS.map((f, i) => { const x = DEALS.filter(d => d[0] === i);
+      const g = x.filter(d => d[4] === 'g' && d[7] >= de), p = x.filter(d => d[4] === 'p' && d[7] >= de);
+      return [f, x.filter(d => d[4] === 'a').length, g.length, p.length, sum(g), g.length + p.length ? Math.round(100 * g.length / (g.length + p.length)) + '%' : '—']; })
+      .sort((a, b) => b[2] - a[2] || b[1] - a[1]);
+    const pl = {mes: 'no mês', tri: 'em 90 dias', ano: 'no ano'}[per];
+    document.getElementById('imp-sub').textContent = (fi < 0 ? 'Todos os funis' : FUNIS[fi]) + ' · ' + sp.options[sp.selectedIndex].text
+      + ' · Dados do GesMkt de ' + DADOS_DE + ' · Gerado em ' + new Date().toLocaleString('pt-BR', {dateStyle: 'short', timeStyle: 'short'});
+    const kpi = (l, v, d, cor) => `<div class="kpi"><small>${l}</small><strong${cor ? ` style="color:var(--${cor})"` : ''}>${v}</strong><small>${d}</small></div>`;
+
+    const sumGp = sum(gp), nFun = a => FUNIS.map((f, i) => [f, a.filter(d => d[0] === i).length]);
+    const blocoPdf = leitura({gp, pp, conv, pl, fs, rs, novas, gm, atras, semat, semv, semg, recentes, sumGp}) + `<div class="cartao so-pdf"><div class="pz-g">
+        ${pizza('Em andamento por funil', nFun(ab), v => v)}
+        ${gp.length ? pizza('Ganhas ' + pl + ' por funil', nFun(gp), v => v) : pizza('Novas ' + pl + ' por funil', nFun(novas), v => v)}
+        ${pizza('Em andamento por etapa', ETAPAS.map((e, i) => [e, et[i].length]), v => v)}
+      </div></div>`;
+    // evolução de 12 meses, maiores em aberto e fechadas sem registro (só no PDF)
+    const m12 = []; for (let i = 11; i >= 0; i--) { const x = new Date(t.getFullYear(), t.getMonth() - i, 1); m12.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
+    const rot = m => MES[+m.slice(5) - 1] + '/' + m.slice(2, 4);
+    const ev = m12.map(m => ({m, n: ds.filter(d => d[6].startsWith(m)).length, g: ds.filter(d => d[4] === 'g' && d[7].startsWith(m)), p: ds.filter(d => d[4] === 'p' && d[7].startsWith(m)).length}));
+    const evMx = Math.max(1, ...ev.map(e => Math.max(e.n, e.g.length, e.p)));
+    const maiores = ab.filter(d => d[5] > 0).sort((a, b) => b[5] - a[5]).slice(0, 10);
+    const tabPdf = (cab, linhas) => `<table class="dados pn-compacta"><tr>${cab}</tr>${linhas || '<tr><td colspan="6" class="dim">Nenhuma.</td></tr>'}</table>`;
+    const extrasPdf = `
+      <div class="cartao so-pdf"><div class="pn-t">Evolução nos últimos 12 meses — novas, ganhas e perdidas</div>
+        <div class="ev">${ev.map(e => `<div class="ev-c"><div class="ev-b"><i class="n" style="height:${90 * e.n / evMx}%"></i><i class="g" style="height:${90 * e.g.length / evMx}%"></i><i class="p" style="height:${90 * e.p / evMx}%"></i></div><small>${rot(e.m)}</small></div>`).join('')}</div>
+        <div class="pn-leg"><span><i style="background:#9bb3cc"></i>Novas</span><span><i style="background:var(--green)"></i>Ganhas</span><span><i style="background:#c9a3a6"></i>Perdidas</span></div>
+        ${tabPdf('<th>Mês</th><th class="num">Novas</th><th class="num">Ganhas</th><th class="num">Valor ganho</th><th class="num">Perdidas</th><th class="num">Conversão</th>',
+          ev.slice().reverse().map(e => `<tr><td>${rot(e.m)}</td><td class="num">${e.n}</td><td class="num">${e.g.length}</td><td class="num">${brl(sum(e.g))}</td><td class="num">${e.p}</td><td class="num">${e.g.length + e.p ? Math.round(100 * e.g.length / (e.g.length + e.p)) + '%' : '—'}</td></tr>`).join(''))}</div>
+      <div class="cartao so-pdf"><div class="pn-t">10 maiores negociações em andamento (por valor)</div>
+        ${tabPdf('<th>Negociação</th><th>Funil</th><th>Etapa</th><th>Responsável</th><th class="num">Valor</th>',
+          maiores.map(d => `<tr><td class="cort">${esc(d[1])}</td><td>${esc(FUNIS[d[0]])}</td><td>${esc(d[2])}</td><td>${esc(curto(d[3]))}</td><td class="num">${brl(d[5])}</td></tr>`).join(''))}</div>
+      <div class="cartao so-pdf"><div class="pn-t">Fechadas sem marcar ganha — em Implantação ou Operação e ainda abertas (${semg.length})</div>
+        ${tabPdf('<th>Negociação</th><th>Funil</th><th>Etapa</th><th>Responsável</th><th class="num">Valor</th>',
+          semg.slice().sort((a, b) => b[5] - a[5]).slice(0, 20).map(d => `<tr><td class="cort">${esc(d[1])}</td><td>${esc(FUNIS[d[0]])}</td><td>${esc(d[2])}</td><td>${esc(curto(d[3]))}</td><td class="num">${brl(d[5])}</td></tr>`).join(''))}
+        ${semg.length > 20 ? `<div class="dim pn-nota">Mostrando as 20 de maior valor. A lista completa está no painel, em Pontos de atenção.</div>` : ''}</div>`;
+    box.innerHTML = `<div class="kpis">
+      ${kpi('Em andamento', ab.length, brl(sum(ab)) + ' em aberto')}
+      ${kpi('Novas ' + pl, novas.length, 'negociações criadas')}
+      ${kpi('Ganhas ' + pl, gp.length, brl(sum(gp)), 'green')}
+      ${kpi('Perdidas ' + pl, pp.length, brl(sum(pp)))}
+      ${kpi('Conversão ' + pl, conv + '%', 'ganhas ÷ fechadas')}
+      ${kpi('Atividades atrasadas', atras.length, 'próxima atividade vencida', 'amber')}
+    </div>
+    ${blocoPdf}
+    <div class="pn-grade">
+      <div class="cartao w6"><div class="pn-t">Funil — negociações em andamento por etapa</div>
+        ${et.map((a, i) => `<div class="pn-bar"><div class="n">${ETAPAS[i]}</div><div class="t"><div class="f" style="width:${100 * a.length / me}%"></div></div><div class="q">${a.length} · ${brl(sum(a))}</div></div>`).join('')}</div>
+      <div class="cartao w6 pn-clica" onclick="abrirAnalise()" title="Abrir análise detalhada"><div class="pn-t" style="display:flex;justify-content:space-between">Negociações ganhas — últimos 6 meses <span class="so-tela" style="color:var(--brand);text-transform:none;letter-spacing:0">Analisar →</span></div>
+        <div class="pn-cols">${gm.map(a => `<div class="pn-col"><b>${a.length}</b><div class="f" style="height:${85 * a.length / mx}%"></div></div>`).join('')}</div>
+        <div class="pn-lbl">${gm.map((a, i) => `<div>${MES[+ms[i].slice(5) - 1]}/${ms[i].slice(2, 4)}<br>${brl(sum(a))}</div>`).join('')}</div></div>
+      <div class="cartao w8">${cabPers('Por responsável', 'resp', rs.map(r => r[0]))}<div class="rolagem"><table class="dados pn-compacta" data-sem-ordem>
+        <tr><th>Responsável</th><th class="num">Andamento</th><th class="num">Em aberto</th><th class="num">Novas</th><th class="num">Ganhas</th><th class="num">Perdidas</th></tr>
+        ${rs.filter(([n]) => mostra('resp', n)).map(([n, r]) => `<tr><td title="${esc(n)}">${esc(curto(n))}</td><td class="num">${r.a}</td><td class="num">${brl(r.v)}</td><td class="num">${r.n}</td><td class="num" style="color:var(--green);font-weight:600">${r.g}</td><td class="num">${r.p}</td></tr>`).join('')}
+      </table></div><div class="dim pn-nota">Novas, ganhas e perdidas ${pl}.</div></div>
+      <div class="cartao w4 pn-clica" onclick="abrirAtencao()" title="Ver a lista completa"><div class="pn-t" style="display:flex;justify-content:space-between;gap:8px"><span>Pontos de atenção <span style="text-transform:none;letter-spacing:0;font-weight:400">· deste ano, responsáveis escolhidos</span></span><span class="so-tela" style="color:var(--brand);text-transform:none;letter-spacing:0;white-space:nowrap">Ver lista →</span></div>
+        <div class="pn-al r"><span>Atividade vencida</span><b>${atras.length}</b></div>
+        <div class="pn-al"><span>Sem próxima atividade</span><b>${semat.length}</b></div>
+        <div class="pn-al"><span>Sem valor preenchido</span><b>${semv.length}</b></div>
+        <div class="pn-al r" title="Negociações em Implantação ou Operação ainda abertas: provavelmente já fecharam e não foram marcadas como ganhas"><span>Fechadas sem marcar ganha</span><b>${semg.length}</b></div>
+        <div class="pn-t" style="margin:14px 0 6px">Mais atrasadas</div>
+        <div class="pn-lst">${atras.sort((a, b) => a[8] < b[8] ? -1 : 1).slice(0, 5).map(d => `<div title="${esc(d[1])}">${d[8].split('-').reverse().join('/')} — ${esc(d[1])} <span class="dim">(${esc(d[3].split(' ')[0])})</span></div>`).join('') || 'Nenhuma'}</div></div>
+      <div class="cartao w12">${cabPers('Comparativo entre funis (' + pl + ')', 'funis', fs.map(r => r[0]))}<div class="rolagem"><table class="dados pn-compacta" data-sem-ordem>
+        <tr><th>Funil</th><th class="num">Andamento</th><th class="num">Ganhas</th><th class="num">Perdidas</th><th class="num">Valor ganho</th><th class="num">Conversão</th></tr>
+        ${fs.filter(r => mostra('funis', r[0])).map(r => `<tr><td>${esc(r[0])}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[3]}</td><td class="num">${brl(r[4])}</td><td class="num">${r[5]}</td></tr>`).join('')}
+      </table></div></div>
+    </div>
+    ${extrasPdf}`;
+  }
+  // ---------- pontos de atenção: lista completa ----------
+  const AT = {listas: null, aba: 'atras', resp: '', busca: ''};
+  const AT_ABAS = {atras: 'Atividade vencida', semat: 'Sem próxima atividade', semv: 'Sem valor preenchido', semg: 'Fechadas sem marcar ganha'};
+  window.abrirAtencao = function () { AT.resp = ''; AT.busca = ''; document.getElementById('pn-modal').hidden = false; atencao(); };
+  function atencao() {
+    const el = document.getElementById('pn-an');
+    const dias = d => Math.round((new Date(HOJE) - new Date(d)) / 864e5);
+    const br = d => d ? d.split('-').reverse().join('/') : '—';
+    const base = AT.listas[AT.aba];
+    const b = AT.busca.toLowerCase();
+    let ls = base.filter(d => (!AT.resp || d[3] === AT.resp) && (!b || d[1].toLowerCase().includes(b)));
+    ls = AT.aba === 'atras' ? ls.slice().sort((x, y) => x[8] < y[8] ? -1 : 1) : ls.slice().sort((x, y) => x[6] < y[6] ? -1 : 1);
+    const porResp = [...new Set(base.map(d => d[3]))].map(r => [r, base.filter(d => d[3] === r).length]).sort((x, y) => y[1] - x[1]);
+    el.innerHTML = `<div class="pn-mcab"><h2>Pontos de atenção</h2><button class="btn" onclick="fecharAnalise()">Fechar</button></div>
+      <div class="kpis">${Object.entries(AT_ABAS).map(([k, n]) => `<div class="kpi pn-aba ${k === AT.aba ? 'sel' : ''}" data-aba="${k}"><small>${n}</small><strong ${k === 'atras' ? 'style="color:var(--brand)"' : ''}>${AT.listas[k].length}</strong></div>`).join('')}</div>
+      <div class="pn-mtopo" style="grid-template-columns:2fr 1.3fr">
+        <div class="cp"><label for="at-b">Buscar negociação</label><input type="search" id="at-b" value="${esc(AT.busca)}" placeholder="Nome da negociação"></div>
+        <div class="cp"><label for="at-r">Responsável</label><select id="at-r"><option value="">Todos</option>${porResp.map(([r, n]) => `<option value="${esc(r)}" ${r === AT.resp ? 'selected' : ''}>${esc(r)} (${n})</option>`).join('')}</select></div></div>
+      <div class="pn-t">${ls.length} negociaç${ls.length === 1 ? 'ão' : 'ões'}</div>
+      <div class="rolagem" style="max-height:55vh"><table class="dados pn-compacta" data-sem-ordem>
+        <tr><th>Negociação</th><th>Funil</th><th>Etapa</th><th>Responsável</th>${AT.aba === 'atras' ? '<th class="num">Data agendada</th><th class="num">Dias de atraso</th>' : '<th class="num">Criada em</th><th class="num">Valor</th>'}</tr>
+        ${ls.map(d => `<tr><td title="${esc(d[1])}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis">${esc(d[1])}</td><td>${esc(FUNIS[d[0]])}</td><td>${esc(d[2])}</td><td>${esc(curto(d[3]))}</td>
+          ${AT.aba === 'atras' ? `<td class="num">${br(d[8])}</td><td class="num" style="color:var(--brand);font-weight:600">${dias(d[8])}</td>` : `<td class="num">${br(d[6])}</td><td class="num">${brl(d[5])}</td>`}</tr>`).join('') || '<tr><td colspan="6">Nenhuma.</td></tr>'}
+      </table></div>`;
+    el.querySelectorAll('[data-aba]').forEach(k => { k.onclick = () => { AT.aba = k.dataset.aba; AT.resp = ''; atencao(); }; });
+    document.getElementById('at-r').onchange = e => { AT.resp = e.target.value; atencao(); };
+    document.getElementById('at-b').oninput = e => {
+      AT.busca = e.target.value; atencao();
+      const n = document.getElementById('at-b'); n.focus(); n.setSelectionRange(n.value.length, n.value.length);
+    };
+  }
+
+  // ---------- análise detalhada de ganhos ----------
+  const AN = {meses: 12, funil: -1, resp: '', metr: 'qtd', sel: null};
+  window.abrirAnalise = function () { AN.funil = +sf.value; AN.sel = null; document.getElementById('pn-modal').hidden = false; analise(); };
+  window.fecharAnalise = function () { document.getElementById('pn-modal').hidden = true; };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharAnalise(); });
+
+  function analise() {
+    const el = document.getElementById('pn-an');
+    const sum = a => a.reduce((s, d) => s + d[5], 0);
+    const ds = DEALS.filter(d => (AN.funil < 0 || d[0] === AN.funil) && (!AN.resp || d[3] === AN.resp));
+    const ms = []; const t = new Date();
+    const nm = AN.meses || t.getMonth() + 1;  // 0 = este ano (janeiro até agora)
+    for (let i = nm - 1; i >= 0; i--) { const x = new Date(t.getFullYear(), t.getMonth() - i, 1); ms.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
+    const lin = ms.map(m => ({m, g: ds.filter(d => d[4] === 'g' && d[7].startsWith(m)), p: ds.filter(d => d[4] === 'p' && d[7].startsWith(m)),
+                              n: ds.filter(d => d[6].startsWith(m)).length}));
+    const val = a => AN.metr === 'qtd' ? a.length : sum(a);
+    const mx = Math.max(1, ...lin.map(l => Math.max(val(l.g), val(l.p))));
+    const tg = lin.flatMap(l => l.g), tp = lin.flatMap(l => l.p);
+    const conv = tg.length + tp.length ? 100 * tg.length / (tg.length + tp.length) : 0;
+    const comValor = tg.filter(d => d[5] > 0), ticket = comValor.length ? sum(comValor) / comValor.length : 0;
+    const abertas = ds.filter(d => d[4] === 'a');
+    const resps = [...new Set(DEALS.map(d => d[3]))].filter(r => !OCULTOS.includes(r)).sort();
+    const rot = m => MES[+m.slice(5) - 1] + '/' + m.slice(2, 4);
+    const fmt = v => AN.metr === 'qtd' ? v : brl(v);
+    const pct = (g, p) => g + p ? Math.round(100 * g / (g + p)) + '%' : '—';
+    const sel = AN.sel != null ? lin[AN.sel] : null;
+
+    const tabela = sel
+      ? `<div class="pn-t">Ganhas em ${rot(sel.m)} (${sel.g.length}) · <a href="#" id="an-volta">ver todos os meses</a></div><div class="rolagem" style="max-height:340px"><table class="dados" data-sem-ordem>
+          <tr><th>Negociação</th><th>Funil</th><th>Responsável</th><th class="num">Valor</th></tr>
+          ${sel.g.slice().sort((a, b) => b[5] - a[5]).map(d => `<tr><td>${esc(d[1])}</td><td>${esc(FUNIS[d[0]])}</td><td>${esc(d[3])}</td><td class="num">${brl(d[5])}</td></tr>`).join('') || '<tr><td colspan="4">Nenhuma.</td></tr>'}</table></div>`
+      : `<div class="pn-t">Mês a mês</div><div class="rolagem" style="max-height:340px"><table class="dados" data-sem-ordem>
+          <tr><th>Mês</th><th class="num">Novas</th><th class="num">Ganhas</th><th class="num">Valor ganho</th><th class="num">Perdidas</th><th class="num">Conversão</th></tr>
+          ${lin.slice().reverse().map(l => `<tr><td>${rot(l.m)}</td><td class="num">${l.n}</td><td class="num">${l.g.length}</td><td class="num">${brl(sum(l.g))}</td><td class="num">${l.p.length}</td><td class="num">${pct(l.g.length, l.p.length)}</td></tr>`).join('')}</table></div>`;
+
+    el.innerHTML = `<div class="pn-mcab"><h2>Análise de negociações ganhas</h2><button class="btn" onclick="fecharAnalise()">Fechar</button></div>
+      <div class="pn-mtopo">
+        <div class="cp"><label for="an-f">Funil</label><select id="an-f"><option value="-1">Todos os funis</option>${FUNIS.map((f, i) => `<option value="${i}" ${i === AN.funil ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+        <div class="cp"><label for="an-r">Responsável</label><select id="an-r"><option value="">Todos</option>${resps.map(r => `<option ${r === AN.resp ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></div>
+        <div class="cp"><label for="an-m">Período</label><select id="an-m"><option value="0" ${AN.meses === 0 ? 'selected' : ''}>Este ano</option>${[6, 12, 24].map(n => `<option value="${n}" ${n === AN.meses ? 'selected' : ''}>Últimos ${n} meses</option>`).join('')}</select></div>
+        <div class="cp"><label for="an-v">Mostrar</label><select id="an-v"><option value="qtd">Quantidade</option><option value="val" ${AN.metr === 'val' ? 'selected' : ''}>Valor (R$)</option></select></div></div>
+      <div class="kpis">
+        <div class="kpi"><small>Ganhas no período</small><strong style="color:var(--green)">${tg.length}</strong><small>${brl(sum(tg))}</small></div>
+        <div class="kpi"><small>Perdidas no período</small><strong>${tp.length}</strong><small>${brl(sum(tp))}</small></div>
+        <div class="kpi"><small>Conversão</small><strong>${Math.round(conv)}%</strong><small>ganhas ÷ fechadas</small></div>
+        <div class="kpi"><small>Ticket médio</small><strong>${brl(ticket)}</strong><small>das ganhas com valor (${comValor.length})</small></div>
+        <div class="kpi"><small>Média por mês</small><strong>${(tg.length / nm).toFixed(1).replace('.', ',')}</strong><small>${brl(sum(tg) / nm)}</small></div>
+      </div>
+      <div class="pn-t">Por mês — clique num mês para ver as negociações</div>
+      <div class="pn-cols2">${lin.map((l, i) => `<div class="pn-c2 ${i === AN.sel ? 'sel' : ''}" data-i="${i}" title="${rot(l.m)}: ${l.g.length} ganhas (${brl(sum(l.g))}), ${l.p.length} perdidas"><div class="g" style="height:${90 * val(l.g) / mx}%"></div><div class="p" style="height:${90 * val(l.p) / mx}%"></div></div>`).join('')}</div>
+      <div class="pn-lbl" style="gap:6px">${lin.map(l => `<div>${rot(l.m)}<br><b style="color:var(--ink)">${fmt(val(l.g))}</b></div>`).join('')}</div>
+      <div class="pn-leg"><span><i style="background:var(--green)"></i>Ganhas</span><span><i style="background:#c9a3a6"></i>Perdidas</span></div>
+      <div class="pn-dois"><div>${tabela}</div>
+        <div class="pn-sim"><div class="pn-t">Simulação — quanto o que está em andamento pode render</div>
+          <div class="lin"><span>Negociações em andamento</span><b>${abertas.length}</b></div>
+          <div class="lin"><span>Taxa de conversão (%)</span><input type="number" id="sim-c" min="0" max="100" step="1" value="${Math.round(conv)}"></div>
+          <div class="lin"><span>Ticket médio (R$)</span><input type="number" id="sim-t" min="0" step="100" value="${Math.round(ticket)}"></div>
+          <div class="lin"><span>Fechar em quantos meses</span><input type="number" id="sim-m" min="1" max="36" step="1" value="6"></div>
+          <div class="res" id="sim-r"></div>
+          <div class="dim" style="font-size:11.5px;margin-top:10px">Os campos começam com os números reais do período e filtros escolhidos; mude para simular cenários.</div></div>
+      </div>`;
+
+    const simular = () => {
+      const c = +document.getElementById('sim-c').value / 100, tk = +document.getElementById('sim-t').value, mm = Math.max(1, +document.getElementById('sim-m').value);
+      const q = Math.round(abertas.length * c);
+      document.getElementById('sim-r').innerHTML = `<div class="lin"><span>Negociações que viram contrato</span><b>${q}</b></div>
+        <div class="lin"><span>Receita prevista</span><b style="color:var(--green)">${brl(q * tk)}</b></div>
+        <div class="lin"><span>Por mês</span><span>${(q / mm).toFixed(1).replace('.', ',')} contratos · ${brl(q * tk / mm)}</span></div>`;
+    };
+    ['sim-c', 'sim-t', 'sim-m'].forEach(i => { document.getElementById(i).oninput = simular; });
+    simular();
+    document.getElementById('an-f').onchange = e => { AN.funil = +e.target.value; AN.sel = null; analise(); };
+    document.getElementById('an-r').onchange = e => { AN.resp = e.target.value; AN.sel = null; analise(); };
+    document.getElementById('an-m').onchange = e => { AN.meses = +e.target.value; AN.sel = null; analise(); };
+    document.getElementById('an-v').onchange = e => { AN.metr = e.target.value; analise(); };
+    const volta = document.getElementById('an-volta');
+    if (volta) volta.onclick = e => { e.preventDefault(); AN.sel = null; analise(); };
+    el.querySelectorAll('.pn-c2').forEach(c => { c.onclick = () => { const i = +c.dataset.i; AN.sel = AN.sel === i ? null : i; analise(); }; });
+  }
+
+  carregar(false);
+})();
+</script>
+{% endblock %}

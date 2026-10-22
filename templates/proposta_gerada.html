@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Proposta gerada{% endblock %}
+{% block crumb %}Propostas / <b>{{ '%03d' % dados.numero|int }}/{{ dados.ano }}</b>{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('propostas')">Abrir pasta</button>
+<a class="btn" href="{{ url_for('proposta_editar', p=r.pasta_rel) }}" title="Reabre esta proposta para acrescentar ou ajustar exames">Adicionar / editar exames</a>
+<a class="btn" href="{{ url_for('proposta_nova') }}">Nova proposta</a>
+<a class="btn" href="{{ url_for('proposta_gerada_arquivo', nome=r.docx_rel) }}">Baixar .docx</a>
+{% if r.pdf_rel %}<a class="btn primario" href="{{ url_for('proposta_gerada_arquivo', nome=r.pdf_rel) }}" target="_blank"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path></svg>Abrir PDF</a><a class="btn" href="{{ url_for('proposta_gerada_arquivo', nome=r.pdf_rel) }}" download><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>Baixar PDF</a>{% endif %}
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('green', 'Proposta atualizada' if editada else 'Proposta gerada', 'Proposta ' ~ ('%03d' % dados.numero|int) ~ '/' ~ dados.ano, '<path d="M20 6L9 17l-5-5"></path>') %}Proposta {{ '%03d' % dados.numero|int }}/{{ dados.ano }} {{ 'atualizada' if editada else 'gerada' }} — {{ dados.cliente }} · {{ dados.itens|length }} item(ns) · total {{ r.total|moeda }} · assinada por {{ quem.nome }}.{% endcall %}
+
+<div class="cartao">
+  <h2>Itens</h2>
+  <div class="rolagem mt-s"><table class="dados">
+    <tr><th>Mnemônico</th><th>Descrição</th><th class="n">Qtd</th>{% if dados.tipo == 'privada' %}<th>Código SUS</th>{% endif %}<th class="n">Valor</th></tr>
+    {% for i in dados.itens %}
+    <tr><td class="mn">{{ i.mnemonico|upper }}</td><td>{{ i.descricao }}</td><td class="n">{{ i.qtd|num }}</td>{% if dados.tipo == 'privada' %}<td class="mono">{{ i.codigo_sus }}</td>{% endif %}<td class="n">{{ i.valor|moeda }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="{{ 4 if dados.tipo == 'privada' else 3 }}">TOTAL</td><td class="n">{{ r.total|moeda }}</td></tr>
+  </table></div>
+  <p class="dim mt-s" style="font-size:12.5px">Salvo em <code>{{ r.pasta }}</code>{% if not r.pdf %} — o PDF não foi gerado (nem LibreOffice nem Word disponíveis); abra o .docx e salve como PDF.{% endif %}</p>
+</div>
+{% endblock %}

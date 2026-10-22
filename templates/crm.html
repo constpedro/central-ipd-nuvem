@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block titulo %}CRM · {{ nome_crm }}{% endblock %}
+{% block acoes_topo %}
+<a class="btn" href="{{ crm_url }}" target="_blank" rel="noopener">Abrir o {{ nome_crm }}<svg class="ic ic-xs" viewBox="0 0 24 24"><path d="M10 14L21 3M15 3h6v6"></path></svg></a>
+{% endblock %}
+
+{% block conteudo %}
+{% macro botoes() %}
+<div class="crm-botoes">
+  <button class="btn" name="modo" value="simular" type="submit">① Simular</button>
+  <button class="btn azul" name="modo" value="teste" type="submit" data-confirma="Criar 1 card de verdade no CRM?">② Testar com 1 card</button>
+  <button class="btn primario" name="modo" value="enviar" type="submit" data-confirma="Criar os cards de verdade no CRM?">③ Criar no CRM</button>
+</div>
+{% endmacro %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('blue', 'Área comercial', 'CRM · ' ~ nome_crm, '<path d="M4 5h16v4H4zM4 11h10v4H4zM4 17h6v3H4z"></path>') %}Cria os cards de renovação do mês a partir do Word, cards avulsos a partir de uma planilha e troca o responsável dos cards de um dia. Comece sempre por <b>Simular</b>; depois teste com 1 card e confira no CRM antes de criar o resto.{% endcall %}
+
+{% if not ok %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>
+<div>Não encontrei a automação em <code>{{ pasta }}</code>. Ajuste <code>CRM_DIR</code> em <code>config.py</code>.</div></div>
+{% endif %}
+
+<div class="crm-padroes">
+  <div><small>Funil</small><b>{{ cfg.funil or '—' }}</b></div>
+  <div><small>Nome do card</small><b>{{ cfg.nome_card or '—' }}</b></div>
+  <div><small>Produto</small><b>{{ cfg.produto or '—' }}</b></div>
+  <div><small>Responsável padrão</small><b>{{ cfg.responsavel_nome or '—' }}</b></div>
+  <div><small>CRM</small><b>{{ nome_crm }}</b> <span class="chip neutro" id="conexao">verificando…</span></div>
+  <div class="crm-editar"><button type="button" class="btn" id="btn-editar-cfg">Editar configuração</button></div>
+</div>
+
+<form method="post" action="{{ url_for('crm_config', aba=aba_crm) }}" class="cartao mt" id="form-cfg" hidden><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <h2>Configuração padrão do CRM</h2>
+  <p class="dim">Vale para os próximos cards criados. Funis e usuários vêm do {{ nome_crm }}.</p>
+  <div class="linha campo">
+    <div class="campo"><label>Funil</label>
+      <select name="funil" id="sel-funil" required><option value="{{ cfg.funil }}">{{ cfg.funil or '— carregando —' }}</option></select></div>
+    <div class="campo"><label>Responsável padrão</label>
+      <select name="responsavel_id" id="sel-resp-cfg"><option value="{{ cfg.responsavel_id }}">{{ cfg.responsavel_nome or '— carregando —' }}</option></select>
+      <input type="hidden" name="responsavel_nome" id="resp-nome-cfg" value="{{ cfg.responsavel_nome }}"></div>
+  </div>
+  <div class="linha campo">
+    <div class="campo"><label>Nome do card</label><input type="text" name="nome_card" value="{{ cfg.nome_card }}" required></div>
+    <div class="campo"><label>Produto</label><input type="text" name="produto" value="{{ cfg.produto }}" placeholder="nenhum">
+      <span class="dica">No GesMkt o produto só liga o valor do card (qualquer texto serve). Vazio = cards sem valor.</span></div>
+  </div>
+  <div class="crm-botoes">
+    <button class="btn primario" type="submit">Salvar</button>
+    <button class="btn" type="button" id="btn-cancelar-cfg">Cancelar</button>
+  </div>
+</form>
+
+<div class="grade c2 mt">
+<div>
+  <nav class="abas-mod" role="tablist">
+    {% for chave, nome in [('criar', 'Criar cards'), ('responsavel', 'Trocar responsável'), ('funis', 'Funis e usuários')] %}
+    <button type="button" role="tab" data-aba="{{ chave }}" class="{{ 'ativa' if aba_crm == chave }}">{{ nome }}</button>
+    {% endfor %}
+  </nav>
+
+  {# ---------- criar cards (Word do mês ou planilha) ---------- #}
+  <form method="post" enctype="multipart/form-data" class="cartao aba-corpo" data-aba="criar" {{ 'hidden' if aba_crm != 'criar' }}><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="acao" value="criar">
+    <h2>Criar cards</h2>
+    <p>Escolha o <b>Word do mês</b> (.docx) ou uma <b>planilha</b> (.xlsx / .csv) — a Central reconhece sozinha.
+      Word: um card por linha da tabela, no 1º estágio do funil <b>{{ cfg.funil }}</b>, com o produto e o valor.
+      Planilha: colunas <code>empresa</code> · <code>funil</code> · <code>nome</code> · <code>valor</code> · <code>historico</code> (<a href="{{ url_for('crm_modelo') }}">baixar o modelo</a>).</p>
+
+    <div class="campo mt"><label>Arquivo (.docx, .xlsx ou .csv)</label>
+      <select name="arquivo">
+        {% for a in words + planilhas %}<option value="{{ a.nome }}">{{ a.nome }}</option>{% else %}<option value="">— nenhum na pasta —</option>{% endfor %}
+      </select>
+      <span class="dica"><input type="file" name="arquivo_envio" accept=".docx,.xlsx,.csv" class="envio"></span>
+    </div>
+    <div class="campo"><label>Valores escritos à mão (.csv, opcional — só para o Word)</label>
+      <select name="csv">
+        <option value="">— não usar —</option>
+        {% for a in csvs %}<option value="{{ a.nome }}">{{ a.nome }}</option>{% endfor %}
+      </select>
+      <span class="dica"><input type="file" name="csv_envio" accept=".csv" class="envio"></span>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Começar na empresa</label><input type="text" name="a_partir" placeholder="parte do nome (opcional)"></div>
+      <div class="campo"><label>Quantos cards</label><input type="text" name="limite" inputmode="numeric" placeholder="vazio = todos"></div>
+    </div>
+    <div class="campo"><label>Responsável</label>
+      <select name="responsavel" class="sel-resp"><option value="{{ cfg.responsavel_id }}">{{ cfg.responsavel_nome }}</option></select></div>
+    <div class="campo"><label class="check-inline"><input type="checkbox" name="sem_valor"> Criar sem produto/valor (só para o Word)</label></div>
+    {{ botoes() }}
+  </form>
+
+  {# ---------- trocar responsável ---------- #}
+  <form method="post" class="cartao aba-corpo" data-aba="responsavel" {{ 'hidden' if aba_crm != 'responsavel' }}><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="acao" value="responsavel">
+    <h2>Trocar responsável</h2>
+    <p>Passa para outra pessoa os cards criados num dia no funil <b>{{ cfg.funil }}</b>.</p>
+    <div class="linha campo mt">
+      <div class="campo"><label>Cards criados em</label><input type="date" name="data" value="{{ hoje }}" required></div>
+      <div class="campo"><label>Quantos cards</label><input type="text" name="limite" inputmode="numeric" placeholder="vazio = todos"></div>
+    </div>
+    <div class="campo"><label>Novo responsável</label>
+      <select name="responsavel" class="sel-resp" required><option value="">— carregando usuários… —</option></select></div>
+    <div class="crm-botoes">
+      <button class="btn" name="modo" value="simular" type="submit">Simular</button>
+      <button class="btn primario" name="modo" value="enviar" type="submit" data-confirma="Trocar o responsável de verdade no CRM?">Trocar no CRM</button>
+    </div>
+  </form>
+
+  {# ---------- funis ---------- #}
+  <div class="cartao aba-corpo" data-aba="funis" {{ 'hidden' if aba_crm != 'funis' }}>
+    <div class="entre"><h2>Funis e usuários</h2><button class="btn pequeno" type="button" id="recarregar">Atualizar</button></div>
+    <p>Direto do CRM, com os ids (para o <code>config.json</code>).</p>
+    <div id="lista-funis" class="mt-s"><p class="dim">Carregando…</p></div>
+  </div>
+</div>
+
+<div>
+  <div class="cartao">
+    <h2>Passo a passo</h2>
+    <ol class="crm-passos">
+      <li><b>Simular</b><span>mostra o que seria criado, sem mexer no CRM.</span></li>
+      <li><b>Testar com 1 card</b><span>cria só o primeiro — confira no {{ nome_crm }}.</span></li>
+      <li><b>Criar no CRM</b><span>cria os demais. Se já criou o 1º, preencha “Começar na empresa” com a 2ª.</span></li>
+    </ol>
+  </div>
+  {% if jobs %}
+  <div class="cartao mt">
+    <h2>Execuções recentes</h2>
+    <div class="arquivos mt-s">
+      {% for j in jobs %}
+      <a href="{{ url_for('ver_job', job_id=j.id) }}"><span class="tipo">{{ j.resultado.ok if j.resultado else '…' }}</span>{{ j.titulo[6:] }}<small>{{ j.status }} · {{ j.criado_em }}</small></a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+  const abas = document.querySelectorAll('.abas-mod button');
+  abas.forEach(b => b.addEventListener('click', () => {
+    abas.forEach(x => x.classList.toggle('ativa', x === b));
+    document.querySelectorAll('.aba-corpo').forEach(c => c.hidden = c.dataset.aba !== b.dataset.aba);
+    history.replaceState(null, '', '?aba=' + b.dataset.aba);
+  }));
+
+  document.querySelectorAll('[data-confirma]').forEach(b => b.addEventListener('click', e => {
+    const lim = b.form.querySelector('[name=limite]');
+    let msg = b.dataset.confirma;
+    if (b.value === 'enviar' && lim && lim.value.trim()) msg = msg.replace('os cards', lim.value.trim() + ' card(s)');
+    else if (b.value === 'enviar' && b.form.dataset.aba !== 'responsavel') msg = msg.replace('os cards', 'TODOS os cards');
+    if (!confirm(msg)) e.preventDefault();
+  }));
+
+  function esc(v) { const s = document.createElement('span'); s.textContent = v == null ? '' : v; return s.innerHTML; }
+  const padrao = {{ (cfg.responsavel_id or '')|tojson }};
+
+  async function carregar(forcar) {
+    const chip = document.getElementById('conexao');
+    const box = document.getElementById('lista-funis');
+    chip.className = 'chip neutro'; chip.textContent = 'verificando…';
+    try {
+      const r = await fetch('/api/crm/dados' + (forcar ? '?forcar=1' : ''));
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro);
+      chip.className = 'chip ok'; chip.textContent = 'conectado';
+      document.querySelectorAll('.sel-resp').forEach(sel => {
+        const atual = sel.value || padrao;
+        sel.innerHTML = (sel.required ? '<option value="">— escolha —</option>' : '') +
+          d.usuarios.map(u => '<option value="' + esc(u.id) + '">' + esc(u.nome) + '</option>').join('');
+        sel.value = sel.required && !sel.dataset.mexeu ? '' : atual;
+        sel.onchange = () => sel.dataset.mexeu = 1;
+      });
+      const sf = document.getElementById('sel-funil'), fa = {{ (cfg.funil or '')|tojson }};
+      sf.innerHTML = (d.funis.some(f => f.nome === fa) ? '' : '<option value="' + esc(fa) + '">' + esc(fa || '— escolha —') + '</option>') +
+        d.funis.map(f => '<option value="' + esc(f.nome) + '">' + esc(f.nome) + '</option>').join('');
+      sf.value = fa;
+      const sr = document.getElementById('sel-resp-cfg');
+      sr.innerHTML = '<option value="">— eu (dono do token) —</option>' +
+        d.usuarios.map(u => '<option value="' + esc(u.id) + '">' + esc(u.nome) + '</option>').join('');
+      sr.value = padrao;
+      box.innerHTML = '<table class="dados"><tr><th>Funil</th><th>Etapas</th></tr>' +
+        d.funis.map(f => '<tr><td><b>' + esc(f.nome) + '</b></td><td class="dim">' + f.etapas.map(e => esc(e.nome)).join(' → ') + '</td></tr>').join('') +
+        '</table><table class="dados mt"><tr><th>Usuário</th><th>id</th></tr>' +
+        d.usuarios.map(u => '<tr><td>' + esc(u.nome) + '</td><td class="mono dim">' + esc(u.id) + '</td></tr>').join('') + '</table>';
+    } catch (e) {
+      chip.className = 'chip erro'; chip.textContent = 'sem conexão';
+      chip.title = e.message;
+      box.innerHTML = '<div class="flash erro" style="margin:0">' + esc(e.message) + '</div>';
+    }
+  }
+  const fc = document.getElementById('form-cfg');
+  document.getElementById('btn-editar-cfg').onclick = () => { fc.hidden = !fc.hidden; };
+  document.getElementById('btn-cancelar-cfg').onclick = () => { fc.hidden = true; };
+  fc.addEventListener('submit', () => {
+    const sr = document.getElementById('sel-resp-cfg');
+    document.getElementById('resp-nome-cfg').value = sr.value ? sr.options[sr.selectedIndex].text : '';
+  });
+  document.getElementById('recarregar').onclick = () => carregar(true);
+  carregar(false);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block titulo %}Relatórios PPI / SISCAN{% endblock %}
+{% block acoes_topo %}
+<button class="btn" onclick="abrirPasta('saida')">Abrir pasta de saída</button>
+{% endblock %}
+
+{% block conteudo %}
+
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Relatórios', 'Relatórios PPI / SISCAN', '<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r=".8"></circle>') %}Escolha o tipo, as cidades e a competência. O SISCAN reúne os 7 procedimentos de citologia; a Anatomia Patológica traz o resto do 0203. Os PDFs saem na pasta <code>gerar_ppi/saida</code>.{% endcall %}
+
+<div class="grade c2">
+  <form method="post" class="cartao"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <h2>Nova rodada</h2>
+    <p>Tudo roda em segundo plano; você acompanha o andamento na próxima tela.</p>
+
+    <div class="campo mt"><label>O que gerar</label>
+      <div class="opcoes">
+        {% for chave, t in tipos.items() %}
+        <label class="opcao"><input type="radio" name="tipo" value="{{ chave }}" {{ 'checked' if loop.first }} onchange="tipoMudou()"><div><strong>{{ t.nome }}</strong><span>{{ t.descricao }}</span></div></label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="campo"><label>Lista salva (opcional)</label>
+      <select name="lista">
+        <option value="">— nenhuma —</option>
+        {% for l in listas %}<option value="{{ l.nome }}">{{ l.titulo }} ({{ l.cidades|length }} cidades)</option>{% endfor %}
+      </select>
+      <span class="dica">As listas ficam em <code>gerar_ppi/listas</code>. <a href="{{ url_for('listas') }}">Gerenciar listas</a>.</span>
+    </div>
+
+    <div class="campo"><label>Cidades (uma por linha)</label>
+      <textarea name="cidades" placeholder="Três Corações&#10;Varginha&#10;Patos de Minas"></textarea>
+    </div>
+
+    <div class="linha campo">
+      <div class="campo"><label>Competência (AAAAMM)</label><input type="text" name="competencia" data-lembrar="competencia" value="{{ competencia_padrao }}" pattern="\d{6}" maxlength="6"></div>
+      <div class="campo" id="campo-referencia" hidden>
+        <label>Cidade-polo (linha "Total em …", SISCAN)</label>
+        <input type="text" name="referencia" value="Varginha" placeholder="ex.: Varginha">
+        <div class="extra-siscan">
+          <label class="check-inline"><input type="checkbox" name="atualizar_siscan"> Atualizar SISCAN agora (ignorar cache)</label>
+          <span class="dica">Sem marcar, uma cidade/ano já consultada é carregada em segundos.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt" style="display:flex;gap:10px;align-items:center">
+      <button class="btn primario" type="submit">Iniciar<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button>
+      <span class="dim" style="font-size:12.5px">Cada cidade leva alguns segundos; o PDF sai pelo Chrome/Edge.</span>
+    </div>
+  </form>
+
+  <div>
+    {% if jobs %}
+    <div class="cartao" style="margin-bottom:16px">
+      <div class="entre"><h2>Rodadas recentes</h2><a class="btn pequeno" href="{{ url_for('fila') }}">Ver fila completa →</a></div>
+      <div class="arquivos mt-s">
+        {% for j in jobs %}
+        <a href="{{ url_for('ver_job', job_id=j.id) }}"><span class="tipo">{{ j.feito }}/{{ j.total }}</span>{{ j.titulo }}<small>{{ j.status }} · {{ j.criado_em }}</small></a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    <div class="cartao">
+      <h2>Arquivos recentes</h2>
+      <p>Pasta <code>saida/</code> do gerar_ppi, mais novos primeiro — {{ arquivos|length }} arquivos.</p>
+      {% if arquivos %}
+      <div class="arquivos recentes mt-s">
+        {% for a in arquivos %}
+        <div class="arq"><a href="{{ url_for('abrir_saida', nome=a.nome) }}" target="_blank"><span class="tipo">PDF</span><span class="nm">{{ a.nome }}</span><small title="{{ a.modificado|dataarq }}">{{ a.modificado|datacurta }}</small></a><a class="baixar" href="{{ url_for('abrir_saida', nome=a.nome) }}" download title="Baixar"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></a></div>
+        {% endfor %}
+      </div>
+      {% if arquivos|length > 6 %}<a class="ver-todos" href="javascript:abrirPasta('saida')">Ver todos os arquivos →</a>{% endif %}
+      {% else %}
+      <div class="vazio mt-s">Nenhum PDF ainda.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function tipoMudou() {
+  const tipo = document.querySelector('input[name=tipo]:checked').value;
+  document.getElementById('campo-referencia').hidden = !tipo !== 'siscan';
+}
+tipoMudou();
+</script>
+{% endblock %}
