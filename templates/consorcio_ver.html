@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}{{ r.nome }} · consórcio{% endblock %}
+{% block crumb %}Consórcios / <b>{{ r.nome }}</b> · {{ r.competencia_fmt }}{% endblock %}
+{% block acoes_topo %}
+<a class="btn" href="{{ url_for('consorcios_pagina') }}">Voltar</a>
+<a class="btn primario" href="{{ url_for('consorcio_arquivo', nome=r.arquivo_xlsx) }}"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>Baixar planilha (.xlsx)</a>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('blue', 'Consórcio · ' ~ r.competencia_fmt, r.nome, '<path d="M3 20h18M5 20v-8M12 20V7M19 20V3"></path>') %}{{ r.n_municipios }} municípios · polo de destaque {{ r.polo_nome }} ({{ r.polo_codigo }}) · gerado em {{ r.gerado_em }}.{% endcall %}
+
+{% set t = r.totais %}
+<div class="cartao">
+  <h2>Valor total atendido em {{ r.polo_nome }}</h2>
+  <div class="kpis mt-s">
+    <div class="kpi"><small>Anatopatológicos</small><strong>{{ t.polo_anato|moeda }}</strong></div>
+    <div class="kpi"><small>Citopatológicos</small><strong>{{ t.polo_cito|moeda }}</strong></div>
+    <div class="kpi"><small>Análises clínicas</small><strong>{{ t.polo_ac|moeda }}</strong></div>
+    <div class="kpi destaque"><small>Total geral {{ r.polo_nome }}</small><strong>{{ t.polo_total|moeda }}</strong></div>
+  </div>
+</div>
+
+{% if r.divergencias or r.falhas %}
+<div class="aviso mt">
+  <div>
+    {% if r.divergencias %}<strong>Divergências de conferência</strong> (soma das linhas ≠ total oficial do site): {% for d in r.divergencias %}{{ d.municipio }} ({{ d.subgrupo }}: {{ d.soma|moeda }} × {{ d.oficial|moeda }}){{ ', ' if not loop.last }}{% endfor %}.<br>{% endif %}
+    {% if r.falhas %}<strong>Não incluídos por erro:</strong> {% for f in r.falhas %}{{ f.municipio }} — {{ f.erro }}{{ '; ' if not loop.last }}{% endfor %}.{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="cartao mt">
+  <h2>Resumo por município</h2>
+  <p>Quantidades e valores anuais programados no PPI; mensal = anual ÷ 12.</p>
+  <div class="rolagem mt-s"><table class="dados" data-filtro>
+    <tr><th>Município</th><th class="n">Anato qtd</th><th class="n">Anato R$</th><th class="n">Cito qtd</th><th class="n">Cito R$</th><th class="n">Anál. clín. R$</th><th class="n">Atend. {{ r.polo_nome }}</th><th class="n">Total anual</th><th class="n">Total mensal</th></tr>
+    {% for l in r.linhas %}
+    <tr><td>{{ l.municipio }} <span class="dim mono" style="font-size:11px">{{ l.codigo_ibge }}</span></td>
+      <td class="n">{{ l.anato_qtd|num }}</td><td class="n">{{ l.anato_valor|moeda }}</td>
+      <td class="n">{{ l.cito_qtd|num }}</td><td class="n">{{ l.cito_valor|moeda }}</td>
+      <td class="n">{{ l.ac_valor|moeda }}</td>
+      <td class="n">{{ l.polo_total|moeda if l.polo_total else '-' }}</td>
+      <td class="n">{{ l.total_anual|moeda }}</td><td class="n">{{ l.total_mensal|moeda }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td>TOTAL</td><td class="n">{{ t.anato_qtd|num }}</td><td class="n">{{ t.anato_valor|moeda }}</td><td class="n">{{ t.cito_qtd|num }}</td><td class="n">{{ t.cito_valor|moeda }}</td><td class="n">{{ t.ac_valor|moeda }}</td><td class="n">{{ t.polo_total|moeda }}</td><td class="n">{{ t.total_anual|moeda }}</td><td class="n">{{ t.total_mensal|moeda }}</td></tr>
+  </table></div>
+</div>
+
+<div class="cartao mt">
+  <h2>Detalhe — atendimento em {{ r.polo_nome }}</h2>
+  <p>{{ r.detalhe|length }} linhas (município de origem, categoria, procedimento).</p>
+  {% if r.detalhe %}
+  <div class="rolagem mt-s"><table class="dados" data-filtro>
+    <tr><th>Município origem</th><th>Categoria</th><th>Código</th><th>Procedimento</th><th class="n">Qtd anual</th><th class="n">Valor anual</th></tr>
+    {% for d in r.detalhe|sort(attribute='codigo')|sort(attribute='municipio') %}
+    <tr><td>{{ d.municipio }}</td><td><span class="label {{ 'brand' if d.categoria == 'Citopatológico' else ('plum' if d.categoria == 'Anatopatológico' else 'blue') }}">{{ d.categoria }}</span></td><td class="mono">{{ d.codigo }}</td><td>{{ d.procedimento }}</td><td class="n">{{ d.qtd|num }}</td><td class="n">{{ d.valor|moeda }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="vazio mt-s">Nenhum procedimento com atendimento em {{ r.polo_nome }}.</div>{% endif %}
+</div>
+{% endblock %}

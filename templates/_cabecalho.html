@@ -1,0 +1,14 @@
+{# Cabeçalho de módulo: versão discreta do painel do Mapa 3D. Uso:
+   {% from "_cabecalho.html" import cabecalho %}
+   {% call cabecalho('blue', 'Área comercial', 'Título', 'M3 20h18...') %}texto explicativo{% endcall %} #}
+{% macro cabecalho(cor, kicker, titulo, icone) %}
+<section class="mod-cab cor-{{ cor }}">
+  <span class="mod-icone"><svg class="ic" viewBox="0 0 24 24">{{ icone | safe }}</svg></span>
+  <div class="mod-texto">
+    <span class="mod-kicker">{{ kicker }}</span>
+    <h1>{{ titulo }}</h1>
+    <p>{{ caller() }}</p>
+  </div>
+  <svg class="mod-marca" viewBox="0 0 24 24" aria-hidden="true">{{ icone | safe }}</svg>
+</section>
+{% endmacro %}

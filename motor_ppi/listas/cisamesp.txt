@@ -1,0 +1,36 @@
+# CISAMESP — 35 municípios
+Albertina
+Bom Repouso
+Borda da Mata
+Bueno Brandão
+Cachoeira de Minas
+Caldas
+Camanducaia
+Cambuí
+Careaçu
+Conceição dos Ouros
+Congonhal
+Córrego do Bom Jesus
+Espírito Santo do Dourado
+Estiva
+Heliodora
+Ibitiúra de Minas
+Inconfidentes
+Ipuiúna
+Itapeva
+Jacutinga
+Monte Sião
+Munhoz
+Natércia
+Ouro Fino
+Pouso Alegre
+Santa Rita de Caldas
+Santa Rita do Sapucaí
+Senador Amaral
+Senador José Bento
+Silvianópolis
+São João da Mata
+São Sebastião da Bela Vista
+Tocos do Moji
+Toledo
+Turvolândia

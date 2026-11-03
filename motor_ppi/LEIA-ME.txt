@@ -1,0 +1,91 @@
+RELATÓRIOS PPI / SISCAN — IPD
+==============================================================
+
+MODO FÁCIL
+----------
+Dê dois cliques em RODAR.bat (ou no atalho "Relatorios PPI-SISCAN" na Área de
+Trabalho) e escolha a opção pelo número. Ele pergunta as cidades e a
+competência. Não precisa digitar comando nem caminho de pasta.
+
+
+INSTALAÇÃO (só na primeira vez)
+-------------------------------
+1) Instale o Python 3: https://www.python.org/downloads/
+   No instalador, marque a caixinha "Add Python to PATH".
+
+2) Nesta pasta, digite "cmd" na barra de endereço do Explorer e aperte Enter.
+   Depois rode:
+       pip install -r requirements.txt
+
+Os PDFs são gerados pelo Google Chrome (ou Edge), que já vem instalado — não
+é preciso instalar mais nada.
+
+
+PELA LINHA DE COMANDO
+---------------------
+Relatório PPI (subgrupos 0203 e 0202, dois PDFs por cidade):
+
+    python gerar_ppi_ipd.py Uberlandia Araguari
+    python gerar_ppi_ipd.py "Patos de Minas" --competencia 202609
+    python gerar_ppi_ipd.py Frutal --subgrupo 0203
+
+Relatório consolidado SISCAN + PPI (um PDF por cidade):
+
+    python gerar_siscan.py Uberlandia Araguari
+    python gerar_siscan.py Frutal --referencia Uberaba
+
+Conferir os valores contra o site do PPI (não gera PDF):
+
+    python verificar_totais.py Uberlandia Araguari
+
+Qualquer um deles aceita --help para ver todas as opções.
+
+
+LISTAS DE CIDADES
+-----------------
+Para não redigitar as mesmas cidades, use um arquivo da pasta listas/:
+
+    python gerar_ppi_ipd.py --lista cisalp
+    python gerar_siscan.py --lista cisalp
+
+Cada arquivo .txt em listas/ é uma lista, com uma cidade por linha. Linhas
+começadas por # são comentário. Para criar outra, copie um .txt existente,
+renomeie e edite — o nome do arquivo vira o nome da lista.
+
+
+ONDE FICAM OS ARQUIVOS
+----------------------
+Os PDFs vão para a pasta saida/:
+
+    ppi_<cidade>_<subgrupo>_<competencia>.pdf      (PPI)
+    siscan_<cidade>_<competencia>_com_ppi.pdf       (SISCAN + PPI)
+
+Se algo falhar, o script continua nas demais cidades e grava o que faltou em
+log_erros.txt. Basta rodar de novo: PDFs já gerados são pulados, então ele
+refaz só o que deu errado.
+
+
+OBSERVAÇÕES
+-----------
+- A competência padrão está no topo de gerar_ppi_ipd.py (constante
+  COMPETENCIA). Dá para mudar a cada execução com --competencia.
+
+- No relatório SISCAN + PPI, a linha "Total em <cidade>" usa Varginha como
+  polo padrão. Para trocar, passe --referencia com outra cidade (ex.:
+  --referencia Uberaba). O total geral e o total do polo consideram somente
+  os códigos 019 e 086.
+
+- O resultado do SISCAN fica em cache local por cidade/ano para as próximas
+  gerações saírem rapidamente. Para forçar uma consulta nova ao TabNet, use
+  --atualizar-siscan.
+
+- Municípios que mandam exames para vários destinos geram mais linhas e o
+  relatório pode sair em 2 páginas. O script já tenta o modo compacto sozinho.
+
+- As fontes (IBM Plex) estão embutidas nos templates de assets/ — o Chrome não
+  precisa de internet para imprimir. Para trocá-las: python assets/embutir_fontes.py
+  e cole o conteúdo de assets/fontes.css no <style> do topo de cada template.
+
+- O site do PPI é acessado em http (no https o autocomplete redireciona para a
+  página inicial e o município não é encontrado — "Expecting value: line 1").
+  Se o endereço mudar, defina a variável de ambiente PPI_BASE_URL.

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titulo %}Conferência de preços{% endblock %}
+{% block crumb %}Tabelas de preço / <b>Conferir arquivo</b>{% endblock %}
+{% block acoes_topo %}
+{% if resultado %}<a class="btn" href="{{ url_for('tabelas_conferencia') }}">Conferir outro</a>{% endif %}
+<a class="btn" href="{{ url_for('tabelas_pagina') }}">Voltar à tabela</a>
+{% endblock %}
+
+{% block conteudo %}
+<p class="intro">Envie um .csv ou .xlsx que tenha uma coluna de <strong>mnemônico</strong> e uma de <strong>valor</strong> — um export do Shift, uma tabela de consórcio, uma cotação — e escolha com qual modalidade comparar. Sai a lista do que está diferente.</p>
+
+{% if resultado %}
+{% set r = resultado %}
+<div class="cartao">
+  <div class="entre">
+    <h2>{{ r.arquivo }} × {{ r.modalidade_nome }}</h2>
+    <div style="display:flex;gap:8px"><a class="btn pequeno" href="{{ url_for('conferencia_arquivo', nome=r.xlsx) }}">Baixar divergências (.xlsx)</a></div>
+  </div>
+  <div class="kpis mt-s">
+    <div class="kpi"><small>Linhas no arquivo</small><strong>{{ r.n_linhas }}</strong></div>
+    <div class="kpi"><small>Iguais à tabela</small><strong>{{ r.iguais }}</strong></div>
+    <div class="kpi destaque"><small>Divergentes</small><strong>{{ r.divergentes|length }}</strong></div>
+    <div class="kpi"><small>Fora da tabela / sem valor</small><strong>{{ r.sem_tabela|length }} / {{ r.sem_valor }}</strong></div>
+  </div>
+</div>
+
+<div class="cartao mt">
+  <h2>Divergentes</h2>
+  {% if r.divergentes %}
+  <div class="rolagem mt-s"><table class="dados" data-filtro>
+    <tr><th>Mnemônico</th><th>Descrição</th><th class="n">No arquivo</th><th class="n">Na tabela</th><th class="n">Diferença</th><th class="n">%</th></tr>
+    {% for d in r.divergentes %}
+    <tr><td class="mn">{{ d.mnemonico }}</td><td>{{ d.descricao }}</td><td class="n">{{ d.valor_arquivo|moeda }}</td><td class="n">{{ d.valor_tabela|moeda }}</td>
+      <td class="n" style="color:{{ 'var(--brand)' if (d.diferenca or 0) < 0 else 'var(--green)' }}">{{ d.diferenca|moeda if d.diferenca is not none else '—' }}</td><td class="n">{{ d.percentual if d.percentual is not none else '—' }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<div class="vazio mt-s">Nenhuma divergência — tudo bate com a tabela.</div>{% endif %}
+</div>
+
+{% if r.sem_tabela %}
+<div class="cartao mt">
+  <h2>Mnemônicos que não estão na tabela oficial</h2>
+  <p>Podem ser exames novos, código digitado diferente ou itens que não existem mais.</p>
+  <div class="rolagem mt-s"><table class="dados" data-filtro>
+    <tr><th>Mnemônico</th><th>Descrição no arquivo</th><th class="n">Valor no arquivo</th></tr>
+    {% for d in r.sem_tabela[:200] %}<tr><td class="mn">{{ d.mnemonico }}</td><td>{{ d.descricao }}</td><td class="n">{{ d.valor_arquivo|moeda if d.valor_arquivo is not none else '—' }}</td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% else %}
+<form method="post" enctype="multipart/form-data" class="cartao"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  {% if cabecalho %}
+  <h2>Confirme as colunas de "{{ arquivo }}"</h2>
+  <p>Não consegui identificar sozinho. Escolha qual coluna é o mnemônico e qual é o valor.</p>
+  <input type="hidden" name="arquivo_salvo" value="{{ arquivo }}">
+  <div class="linha campo mt">
+    <div class="campo"><label>Coluna do mnemônico</label><select name="col_mnem">{% for c in cabecalho %}<option value="{{ loop.index0 }}" {{ 'selected' if col_mnem == loop.index0 }}>{{ c }}</option>{% endfor %}</select></div>
+    <div class="campo"><label>Coluna do valor</label><select name="col_valor">{% for c in cabecalho %}<option value="{{ loop.index0 }}" {{ 'selected' if col_valor == loop.index0 }}>{{ c }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campo"><label>Envie o arquivo de novo</label><input type="file" name="arquivo" accept=".csv,.xlsx,.xlsm,.txt" required></div>
+  {% else %}
+  <h2>Arquivo</h2>
+  <div class="campo mt"><label>.csv (; ou ,) ou .xlsx — a primeira aba</label><input type="file" name="arquivo" accept=".csv,.xlsx,.xlsm,.txt" required></div>
+  {% endif %}
+  <div class="campo"><label>Comparar com</label>
+    <select name="modalidade">{% for k, v in modalidades.items() %}<option value="{{ k }}" {{ 'selected' if modalidade == k }}>{{ v }}</option>{% endfor %}</select>
+    <span class="dica">As colunas são detectadas pelo nome ("mnemônico", "valor"/"preço"/"tabela IPD"). Se não der, você escolhe.</span>
+  </div>
+  <div class="mt"><button class="btn primario" type="submit">Conferir<svg class="ic ic-s" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></button></div>
+</form>
+{% endif %}
+{% endblock %}

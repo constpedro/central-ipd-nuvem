@@ -1,0 +1,364 @@
+<!-- templates/visita_audio.html — Visita por áudio: grava ou recebe o áudio, mostra a transcrição e lança a visita no GesMkt -->
+{% extends "base.html" %}
+{% block titulo %}Visita por áudio{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('blue', 'Área comercial', 'Visita por áudio', '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"></path>') %}{% if na_nuvem %}Dite o resumo da visita, confira o texto e guarde: a Central do PC lança no GesMkt. Dica: fale no roteiro <b>“Cliente: … Pedido: … Objeção: … Próximo passo: ligar dia 5”</b> que os campos se preenchem sozinhos.{% else %}Grave um resumo da visita (ou solte o áudio do WhatsApp), confira o texto e lance no GesMkt. Dica: fale no roteiro <b>“Cliente: … Pedido: … Objeção: … Próximo passo: ligar dia 5”</b> que os campos se preenchem sozinhos.{% endif %}{% endcall %}
+
+{% if na_nuvem %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+<div>No celular, toque em <b>Ditar</b> e fale (use o Chrome). A visita fica guardada aqui e é lançada no GesMkt pela Central do PC, em <b>Visitas vindas do celular</b>.</div></div>
+{% elif not whisper %}
+<div class="aviso"><svg class="ic" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"></path></svg>
+<div>O Whisper (transcrição) não está instalado nesta máquina. Dá para digitar o texto à mão; para transcrever, rode <code>pip install faster-whisper</code>.</div></div>
+{% endif %}
+
+<div class="cartao mt" id="fila-cartao" hidden>
+  {% if na_nuvem %}<h2>Visitas guardadas <span class="chip" id="fila-n"></span></h2>
+  <p>Esperando a Central do PC lançar no GesMkt. Guardou errado? Exclua aqui.</p>
+  {% else %}<h2>Visitas vindas do celular <span class="chip" id="fila-n"></span></h2>
+  <p>Ditadas na Central da nuvem. Clique em <b>Revisar</b>: o texto vem para o formulário; confira o cliente e crie no GesMkt.</p>{% endif %}
+  <div class="va-fila" id="fila-lista"></div>
+</div>
+
+<div class="grade c2 mt va-grade">
+<div>
+  <div class="cartao">
+    <h2>1. {{ 'Ditado' if na_nuvem else 'Áudio' }}</h2>
+    <p>{{ 'Toque em Ditar e fale; o texto aparece logo abaixo.' if na_nuvem else 'Dite, grave aqui ou envie o arquivo. O áudio é apagado depois de virar texto.' }}</p>
+    <div class="va-gravar">
+      <button type="button" class="btn {{ 'primario' if na_nuvem }} va-mic" id="btn-ditar" hidden>
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg><span>Ditar</span></button>
+      <span class="dim" id="ditar-aviso"></span>
+    </div>
+    {% if not na_nuvem %}
+    <div class="va-gravar">
+      <button type="button" class="btn primario va-mic" id="btn-gravar" {{ 'disabled' if not whisper }}>
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg><span>Gravar</span></button>
+      <span class="dim" id="tempo"></span>
+    </div>
+    <label class="va-soltar mt" id="soltar">
+      <input type="file" id="arquivo" accept="audio/*,{{ extensoes }}" hidden {{ 'disabled' if not whisper }}>
+      <b>Solte o áudio aqui</b><span class="dim">ou clique para escolher (.ogg/.opus do WhatsApp, .mp3, .m4a…)</span>
+    </label>
+    {% endif %}
+    <div class="mt" id="andamento" hidden><span class="chip" id="chip-status">enviando…</span> <span class="dim" id="msg-status"></span></div>
+  </div>
+
+  <div class="cartao">
+    <h2>2. Texto da visita</h2>
+    <p>Corrija o que {{ 'o ditado' if na_nuvem else 'o Whisper' }} errou ou digite direto.</p>
+    <textarea id="texto" rows="9" class="mt" placeholder="A transcrição aparece aqui…"></textarea>
+    <div class="crm-botoes"><button type="button" class="btn pequeno" id="btn-sugerir">Preencher campos pelo texto</button></div>
+  </div>
+</div>
+
+<div>
+  <div class="cartao">
+    {% if na_nuvem %}<h2>3. Dados da visita</h2>{% else %}<h2>3. Card no GesMkt <span class="chip neutro" id="conexao">verificando…</span></h2>{% endif %}
+    <div class="campo mt"><label>Cliente</label>
+      <input type="search" id="busca" placeholder="{{ 'nome do cliente' if na_nuvem else 'digite 3 letras do cliente…' }}" autocomplete="off">
+      <div class="va-lista" id="lista"></div>
+      <div class="dica" id="escolhido"></div>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Tipo</label>
+        <select id="tipo"><option value="visita">Visita</option><option value="ligacao">Ligação</option><option value="tarefa">Tarefa</option></select></div>
+      <div class="campo"><label>Data</label><input type="date" id="data-visita" value="{{ hoje }}"></div>
+    </div>
+    {% if not na_nuvem %}<div class="campo"><label>Responsável</label><select id="responsavel"><option value="">— carregando —</option></select></div>{% endif %}
+    <div class="campo"><label>Assunto</label><input type="text" id="assunto" value="Visita Presencial"></div>
+    <div class="linha campo">
+      <div class="campo"><label>Pedido</label><input type="text" id="pedido"></div>
+      <div class="campo"><label>Objeção</label><input type="text" id="objecao"></div>
+    </div>
+    <div class="linha campo">
+      <div class="campo"><label>Próximo passo <span class="dim">(opcional)</span></label><input type="text" id="proximo" placeholder="ex.: ligar para fechar a proposta"></div>
+      <div class="campo"><label>Para quando</label><input type="date" id="data-proximo"></div>
+    </div>
+    <div class="crm-botoes">
+      {% if na_nuvem %}<button type="button" class="btn primario" id="btn-guardar">Guardar visita</button>
+      {% else %}<button type="button" class="btn primario" id="btn-lancar">Criar no GesMkt</button>{% endif %}
+      <button type="button" class="btn" id="btn-limpar">Começar outra</button>
+    </div>
+    <div id="resultado" class="mt"></div>
+  </div>
+</div>
+</div>
+
+<style>
+.va-gravar { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.va-mic { height: 44px; padding: 0 20px; font-size: 14px; }
+.va-mic.gravando { background: #fff; color: var(--brand); }
+.va-mic.gravando .ic { animation: va-pisca 1s infinite; }
+@keyframes va-pisca { 50% { opacity: .3; } }
+.va-soltar { display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; text-align: center;
+  padding: 22px 12px; border: 1.5px dashed var(--line-2); border-radius: var(--radius); cursor: pointer; }
+.va-soltar.sobre, .va-soltar:hover { border-color: var(--blue, #2f6fdf); background: var(--surface-2, #f6f8fb); }
+#texto { width: 100%; resize: vertical; font: inherit; font-size: 13.5px; line-height: 1.5; }
+.va-lista { display: flex; flex-direction: column; max-height: 230px; overflow-y: auto; }
+.va-lista button { text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 7px 4px; font: inherit; font-size: 13px; cursor: pointer; color: var(--ink); }
+.va-lista button:hover { background: var(--surface-2, #f6f8fb); }
+.va-lista small { display: block; color: var(--ink-3); }
+.va-fila .item { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); padding: 7px 4px; font-size: 13px; }
+.va-fila .item > div { flex: 1; min-width: 0; }
+.va-fila small { display: block; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .va-grade { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<script>
+(() => {
+  const CSRF = {{ csrf_token()|tojson }};
+  const $ = id => document.getElementById(id);
+  function esc(v) { const s = document.createElement('span'); s.textContent = v == null ? '' : v; return s.innerHTML; }
+  const NA_NUVEM = {{ na_nuvem|tojson }};
+  let escolha = null;   // {id, conta_id, cliente} ou {novo: "nome"}
+  let doCelular = null; // id da visita da fila que está no formulário (PC)
+
+  // ---------- ditado do navegador (Chrome/Edge; grátis, sem Whisper)
+  const Reconhecer = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (Reconhecer) {
+    $('btn-ditar').hidden = false;
+    let rec = null, base = '';
+    $('btn-ditar').onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new Reconhecer(); rec.lang = 'pt-BR'; rec.continuous = true; rec.interimResults = true;
+      base = $('texto').value.trim(); if (base) base += '\n';
+      let final = '';
+      rec.onresult = e => {
+        let parcial = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) final += e.results[i][0].transcript.trim() + '. ';
+          else parcial += e.results[i][0].transcript;
+        }
+        $('texto').value = base + final + parcial;
+      };
+      rec.onerror = e => { $('ditar-aviso').textContent = e.error === 'not-allowed' ? 'microfone bloqueado' : e.error === 'no-speech' ? '' : 'ditado: ' + e.error; };
+      rec.onend = () => {
+        rec = null; $('btn-ditar').classList.remove('gravando'); $('btn-ditar').querySelector('span').textContent = 'Ditar';
+        if ($('ditar-aviso').textContent.startsWith('ouvindo')) $('ditar-aviso').textContent = '';
+        if (final) sugerirDoTexto();
+      };
+      rec.start(); $('ditar-aviso').textContent = 'ouvindo… toque de novo para parar';
+      $('btn-ditar').classList.add('gravando'); $('btn-ditar').querySelector('span').textContent = 'Parar';
+    };
+  } else if (NA_NUVEM) {
+    $('ditar-aviso').textContent = 'este navegador não faz ditado — abra no Chrome, ou use o microfone do teclado do celular no campo de texto';
+  }
+
+  // ---------- 1. áudio (só no PC: Whisper)
+  if (!NA_NUVEM) {
+  let gravador = null, pedacos = [], relogio = null;
+  $('btn-gravar').onclick = async () => {
+    if (gravador && gravador.state === 'recording') { gravador.stop(); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      status('erro', 'este navegador não grava áudio aqui — no celular a Central precisa abrir por https://'); return;
+    }
+    let fluxo;
+    try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { status('erro', 'microfone bloqueado: ' + e.message); return; }
+    pedacos = [];
+    gravador = new MediaRecorder(fluxo);
+    gravador.ondataavailable = e => e.data.size && pedacos.push(e.data);
+    gravador.onstop = () => {
+      fluxo.getTracks().forEach(t => t.stop());
+      clearInterval(relogio); $('tempo').textContent = '';
+      $('btn-gravar').classList.remove('gravando'); $('btn-gravar').querySelector('span').textContent = 'Gravar';
+      const tipo = gravador.mimeType || 'audio/webm';
+      enviar(new Blob(pedacos, { type: tipo }), 'gravacao' + (tipo.includes('mp4') ? '.m4a' : tipo.includes('ogg') ? '.ogg' : '.webm'));
+    };
+    gravador.start(1000);
+    const ini = Date.now();
+    relogio = setInterval(() => { const s = Math.floor((Date.now() - ini) / 1000); $('tempo').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }, 500);
+    $('btn-gravar').classList.add('gravando'); $('btn-gravar').querySelector('span').textContent = 'Parar';
+  };
+
+  const zona = $('soltar');
+  ['dragenter', 'dragover'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('sobre'); }));
+  ['dragleave', 'drop'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove('sobre'); }));
+  zona.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) enviar(f, f.name); });
+  $('arquivo').onchange = () => { const f = $('arquivo').files[0]; if (f) enviar(f, f.name); $('arquivo').value = ''; };
+  }
+
+  function status(tipo, msg) {
+    $('andamento').hidden = false;
+    $('chip-status').className = 'chip ' + (tipo === 'ok' ? 'ok' : tipo === 'erro' ? 'erro' : '');
+    $('chip-status').textContent = { ok: 'pronto', erro: 'erro' }[tipo] || tipo;
+    $('msg-status').textContent = msg || '';
+  }
+
+  async function enviar(blob, nome) {
+    const fd = new FormData(); fd.append('audio', blob, nome);
+    status('enviando…');
+    try {
+      const r = await fetch('/api/visita-audio/transcrever', { method: 'POST', body: fd, headers: { 'X-CSRF': CSRF } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro || 'falha ao enviar');
+      acompanhar(d.id);
+    } catch (e) { status('erro', e.message); }
+  }
+
+  async function acompanhar(id) {
+    try {
+      const r = await fetch('/api/visita-audio/transcricao/' + id);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro);
+      if (d.status === 'pronto') {
+        $('texto').value = ($('texto').value.trim() ? $('texto').value.trim() + '\n\n' : '') + d.texto;
+        preencher(d.sugestoes);
+        status('ok', 'confira o texto e os campos');
+        return;
+      }
+      if (d.status === 'erro') throw new Error(d.erro);
+      status(d.status === 'carregando' ? 'preparando o Whisper…' : d.status === 'na fila' ? 'na fila…' : 'transcrevendo…',
+             d.status === 'carregando' ? 'no primeiro uso o modelo é baixado (alguns minutos)' : d.progresso ? d.progresso + '%' : '');
+      setTimeout(() => acompanhar(id), 1500);
+    } catch (e) { status('erro', e.message); }
+  }
+
+  // ---------- 2. texto -> campos
+  function preencher(s) {
+    if (!s) return;
+    const pos = (id, v) => { if (v && !$(id).value.trim()) $(id).value = v; };
+    pos('pedido', s.pedido); pos('objecao', s.objecao); pos('proximo', s.proximo); pos('data-proximo', s.data_proximo);
+    if (s.cliente && !escolha && !$('busca').value.trim()) { $('busca').value = s.cliente; if (!NA_NUVEM) buscar(); }
+  }
+  async function sugerirDoTexto() {
+    const r = await fetch('/api/visita-audio/sugerir', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF': CSRF }, body: JSON.stringify({ texto: $('texto').value }) });
+    preencher(await r.json());
+  }
+  $('btn-sugerir').onclick = sugerirDoTexto;
+
+  function limpar() {
+    ['texto', 'busca', 'pedido', 'objecao', 'proximo', 'data-proximo'].forEach(id => $(id).value = '');
+    $('assunto').value = 'Visita Presencial'; $('data-visita').value = {{ hoje|tojson }}; $('tipo').value = 'visita';
+    escolha = null; doCelular = null; $('escolhido').textContent = ''; $('lista').innerHTML = ''; $('resultado').innerHTML = ''; $('andamento').hidden = true;
+  }
+  const msg = (tipo, html) => $('resultado').innerHTML = '<div class="flash ' + tipo + '" style="margin:0">' + html + '</div>';
+
+  // ---------- fila de visitas guardadas (nuvem: as minhas; PC: as vindas do celular)
+  const FILA = NA_NUVEM ? '/api/visita-audio/fila' : '/api/visita-audio/do-celular';
+  const filaUrlExcluir = id => NA_NUVEM ? '/api/visita-audio/fila/' + id + '/feita' : '/api/visita-audio/do-celular/' + id + '/feita';
+  async function carregarFila() {
+    try {
+      const r = await fetch(FILA); const d = await r.json();
+      if (!r.ok) throw new Error(d.erro);
+      $('fila-cartao').hidden = !d.length;
+      $('fila-n').textContent = d.length;
+      $('fila-lista').innerHTML = d.map((v, i) => '<div class="item"><div><b>' + esc(v.cliente) + '</b> · <span class="dim">' + esc(v.criada) +
+        '</span><small>' + esc(v.texto) + '</small></div>' +
+        (NA_NUVEM ? '' : '<button type="button" class="btn pequeno" data-revisar="' + i + '">Revisar</button>') +
+        '<button type="button" class="btn pequeno" data-excluir="' + i + '">Excluir</button></div>').join('');
+      $('fila-lista').querySelectorAll('[data-excluir]').forEach(b => b.onclick = async () => {
+        const v = d[+b.dataset.excluir];
+        if (!confirm('Excluir a visita guardada de ' + v.cliente + ' (' + v.criada + ')? Ela não vai para o GesMkt.')) return;
+        b.disabled = true;
+        const r2 = await fetch(filaUrlExcluir(v.id), { method: 'POST', headers: { 'X-CSRF': CSRF } });
+        if (!r2.ok) { b.disabled = false; alert('Não consegui excluir agora. Tente de novo.'); return; }
+        if (doCelular === v.id) doCelular = null;
+        carregarFila();
+      });
+      $('fila-lista').querySelectorAll('[data-revisar]').forEach(b => b.onclick = () => revisar(d[+b.dataset.revisar]));
+    } catch (e) { console.warn('visitas guardadas:', e.message); }
+  }
+  carregarFila();
+
+  if (NA_NUVEM) {
+    $('btn-guardar').onclick = async () => {
+      const corpo = { texto: $('texto').value, cliente: $('busca').value, tipo: $('tipo').value, data_visita: $('data-visita').value,
+        assunto: $('assunto').value, pedido: $('pedido').value, objecao: $('objecao').value, proximo: $('proximo').value, data_proximo: $('data-proximo').value };
+      $('btn-guardar').disabled = true;
+      try {
+        const r = await fetch('/api/visita-audio/guardar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF': CSRF }, body: JSON.stringify(corpo) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.erro);
+        limpar(); carregarFila();
+        msg('ok', '<b>Visita guardada.</b> ' + esc(d.cliente) + ' — a Central do PC lança no GesMkt.');
+      } catch (e) { msg('erro', esc(e.message)); }
+      finally { $('btn-guardar').disabled = false; }
+    };
+    $('btn-limpar').onclick = limpar;
+    return;
+  }
+
+  // ---------- visita vinda do celular -> formulário (PC)
+  function revisar(v) {
+    limpar(); doCelular = v.id;
+    $('texto').value = v.texto; $('tipo').value = v.tipo || 'visita'; $('data-visita').value = v.data_visita || {{ hoje|tojson }};
+    $('assunto').value = v.assunto || 'Visita Presencial';
+    ['pedido', 'objecao', 'proximo'].forEach(k => $(k).value = v[k] || ''); $('data-proximo').value = v.data_proximo || '';
+    $('busca').value = v.cliente; buscar();
+    $('resultado').innerHTML = '<span class="dim">Visita do celular de ' + esc(v.criada) + ' — escolha o cliente na lista e crie no GesMkt.</span>';
+    $('busca').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // ---------- 3. GesMkt
+  (async () => {
+    const chip = $('conexao');
+    try {
+      const r = await fetch('/api/visita-audio/base'); const d = await r.json();
+      if (!r.ok) throw new Error(d.erro);
+      chip.className = 'chip ok'; chip.textContent = 'conectado';
+      let salvo = ''; try { salvo = localStorage.getItem('va-responsavel') || ''; } catch (e) {}
+      $('responsavel').innerHTML = d.usuarios.map(u => '<option value="' + esc(u.id) + '">' + esc(u.nome) + '</option>').join('');
+      $('responsavel').value = d.usuarios.some(u => u.id === salvo) ? salvo : d.eu;
+    } catch (e) { chip.className = 'chip erro'; chip.textContent = 'sem conexão'; chip.title = e.message; }
+  })();
+  $('responsavel').onchange = () => { try { localStorage.setItem('va-responsavel', $('responsavel').value); } catch (e) {} };
+
+  let espera = null, ultimaBusca = 0;
+  $('busca').oninput = () => { escolha = null; $('escolhido').textContent = ''; clearTimeout(espera); espera = setTimeout(buscar, 450); };
+  async function buscar() {
+    const q = $('busca').value.trim(), lista = $('lista'), n = ++ultimaBusca;
+    if (q.length < 3) { lista.innerHTML = ''; return; }
+    lista.innerHTML = '<span class="dim">buscando no GesMkt…</span>';
+    try {
+      const r = await fetch('/api/visita-audio/clientes?q=' + encodeURIComponent(q)); const d = await r.json();
+      if (n !== ultimaBusca) return;
+      if (!r.ok) throw new Error(d.erro);
+      lista.innerHTML = d.map((x, i) => '<button type="button" data-i="' + i + '"><b>' + esc(x.cliente) + '</b><small>' +
+        esc(x.titulo) + ' · ' + esc(x.funil) + ' › ' + esc(x.etapa) + (x.status !== 'aberta' ? ' · ' + esc(x.status) : '') + '</small></button>').join('') +
+        '<button type="button" data-novo="1"><b>+ Cliente novo: “' + esc(q) + '”</b><small>cria conta e negociação no Saúde Privada › Prospecte</small></button>';
+      lista.querySelectorAll('button').forEach(b => b.onclick = () => {
+        escolha = b.dataset.novo ? { novo: q } : d[+b.dataset.i];
+        $('busca').value = escolha.novo || escolha.cliente;
+        $('escolhido').textContent = escolha.novo ? 'Cliente novo — será criado no GesMkt' : 'Negociação: ' + escolha.titulo + ' (' + escolha.funil + ')';
+        lista.innerHTML = '';
+      });
+    } catch (e) { lista.innerHTML = '<div class="flash erro" style="margin:0">' + esc(e.message) + '</div>'; }
+  }
+
+  $('btn-lancar').onclick = async () => {
+    const res = $('resultado');
+    if (!escolha) { res.innerHTML = '<div class="flash erro" style="margin:0">Escolha o cliente na lista (ou “Cliente novo”).</div>'; return; }
+    const texto = $('texto').value.trim();
+    if (!texto) { res.innerHTML = '<div class="flash erro" style="margin:0">O texto da visita está vazio.</div>'; return; }
+    const extra = [$('pedido').value.trim() && 'Pedido: ' + $('pedido').value.trim(), $('objecao').value.trim() && 'Objeção: ' + $('objecao').value.trim()].filter(Boolean);
+    const corpo = {
+      negociacao_id: escolha.id || '', conta_id: escolha.conta_id || '', cliente_novo: escolha.novo || '',
+      tipo: $('tipo').value, data_visita: $('data-visita').value, responsavel_id: $('responsavel').value,
+      assunto: $('assunto').value.trim(), descricao: (extra.length ? extra.join('\n') + '\n\n' : '') + texto,
+      proximo: $('proximo').value.trim(), data_proximo: $('data-proximo').value,
+    };
+    if (!confirm('Criar no GesMkt para ' + (escolha.novo || escolha.cliente) + '?')) return;
+    $('btn-lancar').disabled = true; res.innerHTML = '<span class="dim">lançando no GesMkt…</span>';
+    try {
+      const r = await fetch('/api/visita-audio/registrar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF': CSRF }, body: JSON.stringify(corpo) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.erro);
+      res.innerHTML = '<div class="flash ok" style="margin:0"><b>Card criado.</b> ' + d.feito.map(esc).join(' · ') +
+        ' — <a href="' + esc(d.link) + '" target="_blank" rel="noopener">abrir no GesMkt</a></div>';
+      if (doCelular) {
+        const r2 = await fetch('/api/visita-audio/do-celular/' + doCelular + '/feita', { method: 'POST', headers: { 'X-CSRF': CSRF } });
+        if (!r2.ok) res.innerHTML += '<div class="flash erro" style="margin:6px 0 0">Não consegui tirar a visita da fila da nuvem — ela vai continuar aparecendo; ignore.</div>';
+        doCelular = null; carregarFila();
+      }
+    } catch (e) { res.innerHTML = '<div class="flash erro" style="margin:0">' + esc(e.message) + '</div>'; }
+    finally { $('btn-lancar').disabled = false; }
+  };
+
+  $('btn-limpar').onclick = limpar;
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}{{ nome }}{% endblock %}
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('green', 'Pasta', nome, '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>') %}Arquivos da pasta, mais novos primeiro — {{ arquivos|length }} arquivo(s). PDFs abrem no navegador; os demais são baixados.{% endcall %}
+<div class="cartao">
+  <div class="busca-caixa"><input type="text" id="filtro" placeholder="Filtrar pelo nome…" autocomplete="off"></div>
+  {% if arquivos %}
+  <div class="arquivos mt-s" id="lista">
+    {% for a in arquivos %}
+    {% set u = url_for('pasta_arquivo', qual=qual, rel=a.rel) %}<div class="arq" data-n="{{ a.rel|lower }}"><a href="{{ u }}" target="_blank"><span class="tipo">{{ (a.rel.rsplit('.', 1)[-1] if '.' in a.rel else 'ARQ')|upper }}</span>{{ a.rel }}<small>{{ a.modificado|dataarq }} · {{ a.tamanho_kb }} KB</small></a><a class="baixar" href="{{ u }}" download title="Baixar"><svg class="ic ic-s" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg></a></div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="vazio mt-s">Pasta vazia.</div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('filtro').addEventListener('input', function () {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#lista .arq').forEach(a => { a.hidden = !a.dataset.n.includes(q); });
+});
+</script>
+{% endblock %}

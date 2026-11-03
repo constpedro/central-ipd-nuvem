@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block titulo %}Situação das metas{% endblock %}
+{% block acoes_topo %}
+<form method="post" action="{{ url_for('robo_rodar') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <button class="btn" type="submit" {{ 'disabled' if robo_job }}>{{ 'Robô rodando…' if robo_job else 'Rodar robô agora' }}</button></form>
+<a class="btn primario" href="{{ url_for('relatorios') }}">Nova rodada SISCAN</a>
+{% endblock %}
+
+{% block conteudo %}
+{% from "_cabecalho.html" import cabecalho %}
+{% call cabecalho('brand', 'Relatórios', 'Situação das metas', '<path d="M3 3v18h18M7 15l4-4 3 3 6-6"></path>') %}Citologia no SISCAN contra a meta do PPI (7 códigos, qtd anual ÷ 12), pelo <strong>acumulado do ano</strong>.{% endcall %}
+
+<div class="kpis">
+  <div class="kpi"><small>Abaixo da meta (&lt; {{ s.limite_atencao }}%)</small><strong style="color:var(--brand)">{{ s.n_abaixo }}</strong></div>
+  <div class="kpi"><small>Atenção ({{ s.limite_atencao }}–99%)</small><strong style="color:var(--amber)">{{ s.n_atencao }}</strong></div>
+  <div class="kpi"><small>Na meta</small><strong style="color:var(--green)">{{ s.n_ok }}</strong></div>
+  <div class="kpi"><small>Sem meta guardada</small><strong>{{ s.sem_meta|length }}</strong></div>
+</div>
+
+<nav class="abas-mod" role="tablist">
+  <button type="button" role="tab" data-aba="situacao" class="ativa">Situação dos municípios <span class="chip" style="margin-left:4px;padding:0 7px">{{ s.linhas|length }}</span></button>
+  <button type="button" role="tab" data-aba="prospeccao">Prospecção <span class="chip" style="margin-left:4px;padding:0 7px">{{ alvos|length }}</span></button>
+  <button type="button" role="tab" data-aba="robo">Robô{% if robo.alertas %} <span class="chip erro" style="margin-left:4px;padding:0 7px">{{ robo.alertas|length }}</span>{% endif %}</button>
+</nav>
+<script>
+// Escolhe a aba antes de desenhar o conteúdo; senão a Situação pisca e depois troca.
+(function () {
+  const ancora = {potencial: 'prospeccao', alvos: 'prospeccao', pactua: 'prospeccao', robo: 'robo'};
+  let aba = ancora[location.hash.slice(1)];
+  if (!aba) { try { aba = localStorage.getItem('metas-aba'); } catch (e) {} }
+  if (!document.querySelector('.abas-mod button[data-aba="' + aba + '"]')) return;
+  document.documentElement.dataset.metasAba = aba;
+  document.querySelectorAll('.abas-mod button').forEach(x => x.classList.toggle('ativa', x.dataset.aba === aba));
+})();
+</script>
+
+{# ---------------- Aba 1: situação ---------------- #}
+<div class="cartao aba-corpo metas" data-aba="situacao">
+<form method="get" class="metas-barra">
+  <select id="consorcio" name="consorcio" onchange="this.form.submit()" aria-label="Ver por consórcio">
+    <option value="">Todos os consórcios</option>
+    {% for l in listas %}<option value="{{ l.nome }}" {{ 'selected' if escolhida and escolhida.nome == l.nome }}>{{ l.titulo }} ({{ l.cidades|length }})</option>{% endfor %}
+  </select>
+  <noscript><button class="btn" type="submit">Filtrar</button></noscript>
+  {% if s.linhas %}
+  <input type="search" id="busca-municipio" placeholder="Buscar município" autocomplete="off" oninput="filtrarMunicipios(this.value)">
+  <select id="ordem" onchange="ordenarMunicipios(this.value)" aria-label="Ordenar por">
+    <option value="pct-asc">Pior no ano</option>
+    <option value="pct-desc">Melhor no ano</option>
+    <option value="mes-asc">Pior último mês</option>
+    <option value="mes-desc">Melhor último mês</option>
+    <option value="nome-asc">Nome (A–Z)</option>
+    <option value="meta-desc">Maior meta</option>
+    <option value="acum-desc">Maior produção</option>
+  </select>
+  {% endif %}
+  {% if escolhida %}<span class="dim metas-nota">{{ s.linhas|length }} de {{ escolhida.cidades|length }} com dados · <a href="{{ url_for('metas_pagina') }}">limpar</a></span>{% endif %}
+  <span class="dim metas-nota" id="busca-vazia" hidden>Nenhum município encontrado.</span>
+</form>
+{% if s.linhas %}
+<div class="rolagem"><table class="dados metas-tab" id="tabela-situacao" data-sem-ordem>
+    <thead><tr><th>Município</th><th class="a">Meta/mês</th><th class="a">Acumulado no ano</th><th class="metas-col-pct">% do ano</th><th>Último mês</th><th>Últimos meses</th></tr></thead>
+    <tbody>
+    {% for l in s.linhas %}
+    {% set cor = '--green' if l.classe == 'ok' else '--amber' if l.classe == 'atencao' else '--brand' %}
+    {% set cor_mes = '--green' if l.classe_mes == 'ok' else '--amber' if l.classe_mes == 'atencao' else '--brand' %}
+    <tr data-nome="{{ l.cidade }}" data-pct="{{ l.pct }}" data-mes="{{ l.pct_mes }}" data-meta="{{ l.meta }}" data-acum="{{ l.acumulado }}" onclick="if (!event.target.closest('a')) location.href=this.querySelector('a').href"
+        title="SISCAN atualizado {{ l.atualizacao or '—' }}{% if l.competencia_ppi %} · PPI {{ l.competencia_ppi[4:] }}/{{ l.competencia_ppi[:4] }}{% endif %}{% if l.regra == 'todos' %} · meta com todos os códigos{% endif %}">
+      <td><a class="metas-nome" href="{{ url_for('meta_municipio', slug=l.slug, consorcio=escolhida.nome if escolhida else None) }}">{{ l.cidade }}</a>
+        {% if l.picos %}<span class="metas-alerta" title="Mês muito acima do normal (provável lote represado), fora do acumulado.">pico fora: {{ l.picos|join(', ') }}</span>{% endif %}</td>
+      <td class="a">{{ '%.0f'|format(l.meta) }}</td>
+      <td class="a">{{ l.acumulado }} <span class="dim">/ {{ '%.0f'|format(l.meta_acumulada) }}</span></td>
+      <td class="metas-col-pct"><div class="metas-pct" style="--cor:var({{ cor }})">
+        <span class="metas-barra-pct"><i style="width:{{ [l.pct, 100]|min }}%"></i></span><b>{{ '%.0f'|format(l.pct) }}%</b></div></td>
+      <td class="metas-mes"><span class="dim">{{ l.mes.split('/')[0][:3] }}</span> {{ l.qtd }} <b style="color:var({{ cor_mes }})">{{ '%.0f'|format(l.pct_mes) }}%</b>
+        {% if l.mes_zerado %}<span class="metas-alerta">zerado</span>
+        {% elif l.seguidos >= 2 %}<span class="metas-alerta">{{ l.seguidos }}× seguidos</span>{% endif %}</td>
+      <td><div class="metas-hist" title="{% for h in l.historico %}{{ h.mes }}: {{ h.qtd }} ({{ h.pct }}%)&#10;{% endfor %}">
+        {% for h in l.historico %}<i class="{{ 'pico' if h.pico }}" style="height:{{ [[h.pct, 100]|min, 6]|max * 0.24 }}px;background:var({{ '--green' if h.classe == 'ok' else '--amber' if h.classe == 'atencao' else '--brand' }})"></i>{% endfor %}
+      </div></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}
+<div class="aviso">{% if escolhida %}Nenhum município deste consórcio tem SISCAN e meta guardados ainda.{% else %}Ainda não há municípios com SISCAN e meta guardados. Gere um relatório SISCAN + PPI para começar.{% endif %}</div>
+{% endif %}
+
+{% if s.sem_siscan %}
+<details class="det mt" open><summary>Do consórcio, ainda sem SISCAN consultado <span>{{ s.sem_siscan|length }}</span></summary>
+  <div class="cont"><p class="mt-s">{{ s.sem_siscan|join(', ') }}</p>
+  <form method="post" action="{{ url_for('relatorios') }}" class="mt-s" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="tipo" value="siscan">
+    <input type="hidden" name="competencia" value="{{ competencia_padrao }}">
+    <textarea name="cidades" id="cidades-sem-siscan" hidden>{{ s.sem_siscan|join('\n') }}</textarea>
+    <button class="btn primario" type="submit">Gerar SISCAN dessas {{ s.sem_siscan|length }} cidades</button>
+    <button class="btn" type="button" onclick="copiarCidades(this, 'cidades-sem-siscan')">Copiar</button>
+  </form></div>
+</details>
+{% endif %}
+
+{% if s.sem_meta %}
+<details class="det mt"><summary>Com SISCAN, mas sem meta guardada <span>{{ s.sem_meta|length }}</span></summary>
+  <div class="cont"><p class="dim" style="font-size:12.5px">Estes municípios foram consultados antes deste painel existir. Rode o relatório SISCAN deles de novo (é rápido, usa o cache) para entrarem aqui.</p>
+  <p class="mt-s">{{ s.sem_meta|join(', ') }}</p>
+  <form method="post" action="{{ url_for('relatorios') }}" class="mt-s" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="tipo" value="siscan">
+    <input type="hidden" name="competencia" value="{{ competencia_padrao }}">
+    <textarea name="cidades" id="cidades-sem-meta" hidden>{{ s.sem_meta|join('\n') }}</textarea>
+    <button class="btn primario" type="submit">Gerar SISCAN dessas {{ s.sem_meta|length }} cidades</button>
+    <button class="btn" type="button" onclick="copiarCidades(this, 'cidades-sem-meta')">Copiar</button>
+  </form></div>
+</details>
+{% endif %}
+</div>
+
+{% macro tabela_cidades(linhas, mostrar_lista=False) %}
+    <div class="rolagem mt-s" style="max-height:520px"><table class="dados metas-tab">
+      <thead><tr><th>Município</th><th>Regional · Consórcio</th><th>Contatos</th><th>Pactua em</th><th class="a">Meta/mês</th><th class="a">Acumulado no ano</th><th class="a">% do ano</th></tr></thead>
+      <tbody>{% for p in linhas %}
+        <tr><td><span class="metas-nome">{{ p.cidade }}</span>{% if mostrar_lista and not p.lista %}<span class="metas-alerta">fora das listas</span>{% endif %}
+            <div class="metas-sub"><a href="{{ url_for('robo_dossie', codigo=p.codigo) }}" target="_blank">Dossiê</a>{% if p.distancia is not none %} · {{ p.distancia }} km{% endif %}</div></td>
+          <td style="font-size:12.5px">{{ p.regional or '—' }}<div class="dim" style="font-size:11.5px">{{ p.consorcios|join(', ') or 'sem consórcio' }}</div></td>
+          <td style="font-size:12px">{% set c = p.contatos or {} %}{% if c.secretaria %}<div><span class="dim">Saúde:</span> {{ c.secretaria.telefone or '—' }}{% if c.secretaria.email %} · {{ c.secretaria.email }}{% endif %}</div>{% endif %}
+            {% if c.prefeitura and c.prefeitura.telefones %}<div><span class="dim">Prefeitura:</span> {{ c.prefeitura.telefones|join(' · ') }}</div>{% endif %}
+            {% if not c.secretaria and not c.prefeitura %}<span class="dim">na próxima rodada</span>{% endif %}</td>
+          <td style="font-size:12.5px">{% for d, q in p.destinos.items() %}{{ d }} ({{ '%.0f'|format(q / 12) }}/mês){{ ', ' if not loop.last }}{% endfor %}</td>
+          <td class="a">{{ '%.0f'|format(p.meta) }}</td>
+          <td class="a">{{ p.acumulado }} <span class="dim" style="font-size:11.5px">de {{ p.meta_acumulada }}</span></td>
+          <td class="a"><strong style="color:var(--brand)">{{ p.pct }}%</strong></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+{% endmacro %}
+
+{# ---------------- Aba 2: prospecção ---------------- #}
+<div class="cartao aba-corpo metas" data-aba="prospeccao" hidden>
+  <form method="post" action="{{ url_for('robo_regional_cidade') }}" class="metas-barra metas-estudar">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <strong>Estudar a regional de uma cidade</strong>
+    <input type="text" name="cidade" list="cidades-mg" placeholder="Ex.: São João del-Rei" required>
+    <datalist id="cidades-mg">{% for c in cidades_mg %}<option value="{{ c }}">{% endfor %}</datalist>
+    <button class="btn primario" type="submit" {{ 'disabled' if robo_job }}>Estudar</button>
+    <span class="dim metas-nota">Consulta o PPI de toda a regional dela.</span>
+  </form>
+
+  <div class="entre" style="margin-top:22px">
+    <h2 style="margin:0">Abaixo da meta <span class="chip erro" style="margin-left:4px">{{ alvos|length }}</span></h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if alvos %}<a class="btn" href="{{ url_for('robo_dossie', grupo='alvos') }}" target="_blank">Dossiê PDF</a>{% endif %}
+      <form method="post" action="{{ url_for('robo_varginha') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" title="Consulta no PPI todas as cidades que mandam exames para Varginha, completa o PPI e os contatos delas">Buscar todas de Varginha</button></form>
+      <form method="post" action="{{ url_for('robo_contatos') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" title="Busca agora os contatos de todas as cidades que ainda não têm (alvos e regionais em estudo)">Completar contatos{% if n_sem_contato %} ({{ n_sem_contato }}){% endif %}</button></form>
+      <a class="btn" href="{{ url_for('robo_planilha') }}">Planilha Excel</a>
+    </div>
+  </div>
+  <p class="dim" style="font-size:12.5px;margin:4px 0 0">Já pactuam em Varginha e estão abaixo de {{ s.limite_atencao }}% da meta no ano. Das mais perto para as mais longe.</p>
+  {% if alvos %}{{ tabela_cidades(alvos, True) }}
+  {% else %}<p class="mt-s" style="font-size:13px">Nenhuma cidade de Varginha abaixo da meta agora.</p>{% endif %}
+
+  {% set fe = filtro_exec %}
+  <form method="get" action="{{ url_for('metas_pagina') }}#pactua" id="pactua" class="metas-barra metas-estudar" style="margin-top:26px">
+    <strong>Pactua em</strong>
+    <input type="text" name="executor" list="executores-ppi" value="{{ fe.pedido }}" placeholder="Executor (ex.: São João del Rei, Lavras)" required>
+    <datalist id="executores-ppi">{% for e in fe.lista %}<option value="{{ e }}">{% endfor %}</datalist>
+    <select name="situacao"><option value="">Todas as situações</option><option value="abaixo" {{ 'selected' if fe.so_abaixo }}>Só abaixo da meta</option></select>
+    <button class="btn primario" type="submit">Filtrar</button>
+    <span class="dim metas-nota">Cidades que mandam alguma citologia para esse executor.</span>
+  </form>
+  {% if fe.pedido and not fe.executor %}<p style="font-size:13px">Nenhum executor com esse nome no PPI das cidades já consultadas (listas e regionais estudadas).</p>
+  {% elif fe.executor %}
+  <div class="entre">
+    <h2 style="margin:0">Pactua em {{ fe.executor }}{% if fe.so_abaixo %} · abaixo da meta{% endif %} <span class="chip" style="margin-left:4px">{{ fe.linhas|length }}</span></h2>
+    <a class="btn" href="{{ url_for('metas_pagina') }}#pactua">Limpar</a>
+  </div>
+  {% if fe.linhas %}{{ tabela_cidades(fe.linhas, True) }}{% else %}<p class="mt-s" style="font-size:13px">Nenhuma cidade nessa situação.</p>{% endif %}
+  {% endif %}
+</div>
+
+{# ---------------- Aba 3: robô ---------------- #}
+<div class="cartao aba-corpo metas" data-aba="robo" hidden>
+  <div class="entre">
+    <h2 style="margin:0">Robô de metas</h2>
+    <span class="dim" style="font-size:12.5px">{% if robo_job %}<strong>Rodando agora</strong> · <a href="{{ url_for('ver_job', job_id=robo_job.id) }}">acompanhar</a>
+      {% elif robo.ultima_rodada %}Última rodada: {{ robo.ultima_rodada[8:10] }}/{{ robo.ultima_rodada[5:7] }} às {{ robo.ultima_rodada[11:16] }}
+      {% else %}Ainda não rodou{% endif %}</span>
+  </div>
+  <p class="dim" style="font-size:12.5px;margin:4px 0 0">Uma vez por dia, com a Central aberta, baixa os meses novos do SISCAN, busca a meta do PPI das cidades vigiadas e avisa o que mudou.</p>
+
+  {% if robo.resumo %}
+  <section class="robo-resumo mt-s">
+    <header><strong>O que o robô viu</strong><span>{{ robo.resumo.quando }}</span></header>
+    <ul>{% for f in robo.resumo.frases %}
+      {% set sep = ': ' if ': ' in f[:45] else (' — ' if ' — ' in f[:45] else none) %}
+      {% if sep %}{% set rot, txt = f.split(sep, 1) %}<li><b>{{ rot }}</b><span>{{ txt }}</span></li>
+      {% else %}<li><span class="robo-so">{{ f }}</span></li>{% endif %}
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <h3 class="robo-tit">Alertas {% if robo.alertas %}<span class="chip erro">{{ robo.alertas|length }}</span>{% endif %}</h3>
+  {% if robo.alertas %}
+  <div class="rolagem" style="max-height:260px"><table class="dados metas-tab" data-sem-ordem>
+    <thead><tr><th>Quando</th><th>Município</th><th>O que mudou</th></tr></thead>
+    <tbody>{% for a in robo.alertas[:60] %}
+      <tr><td class="dim" style="white-space:nowrap">{{ a.quando }}</td>
+        <td><a class="metas-nome" href="{{ url_for('meta_municipio', slug=a.slug) }}">{{ a.cidade }}</a></td>
+        <td>{% if a.tipo == 'recuperou' %}<span class="chip ok">Recuperou</span>{% elif a.tipo == 'zerou' %}<span class="chip erro">Zerou</span>{% elif a.tipo == 'abaixo' %}<span class="chip erro">Abaixo</span>{% else %}<span class="chip">Atenção</span>{% endif %} {{ a.texto }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p style="font-size:13px;margin:0">{{ 'Nenhuma mudança desde que o robô começou a vigiar.' if robo.ultima_rodada else 'Os alertas começam depois da primeira rodada.' }}</p>{% endif %}
+
+  <h3 class="robo-tit">O que o robô vigia</h3>
+  <form method="post" action="{{ url_for('robo_listas') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <section class="robo-grupo">
+      <header><strong>Listas da Central</strong><span class="robo-conta">{{ robo_cfg.listas|length }} de {{ listas|length }}</span>
+        <button type="button" class="robo-todos" onclick="marcarTodos(this)">Marcar todos</button></header>
+      <div class="robo-marcas">{% for l in listas %}
+        <label class="robo-marca"><input type="checkbox" name="lista" value="{{ l.nome }}" {{ 'checked' if l.nome in robo_cfg.listas }}>{{ l.titulo }}</label>{% endfor %}</div>
+    </section>
+    {% if consorcios_mg %}
+    <details class="robo-grupo"><summary><strong>Consórcios de MG</strong><span class="robo-conta">{{ robo_cfg.consorcios_mg|length }} de {{ consorcios_mg|length }}</span>
+        <button type="button" class="robo-todos" onclick="event.preventDefault();marcarTodos(this)">Marcar todos</button></summary>
+      <p class="robo-dica">Vigia todas as cidades do consórcio. A primeira rodada depois de marcar demora mais.</p>
+      <div class="robo-marcas rolagem" style="max-height:220px">{% for c in consorcios_mg if 'SAMU' not in c.sigla|upper and 'URG' not in c.sigla|upper %}
+        <label class="robo-marca" title="{{ c.nome }} · sede {{ c.sede }} · {{ c.cidades|join(', ') }}"><input type="checkbox" name="consorcio_mg" value="{{ c.sigla }}" {{ 'checked' if c.sigla in robo_cfg.consorcios_mg }}>{{ c.sigla }}<small>{{ c.cidades|length }}</small></label>{% endfor %}</div>
+    </details>
+    {% endif %}
+    <button class="btn primario mt-s" type="submit">Salvar listas e consórcios</button>
+  </form>
+
+  <form method="post" action="{{ url_for('robo_regionais') }}" class="mt"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <details class="robo-grupo"><summary><strong>Regionais de Saúde em estudo</strong><span class="robo-conta">{{ 'MG inteira' if robo_cfg.todas_mg else robo_cfg.regionais|length }}</span>
+        <button type="button" class="robo-todos" onclick="event.preventDefault();marcarTodos(this)">Marcar todos</button></summary>
+      <p class="robo-dica">SES-MG, da mais perto para a mais longe de Varginha.</p>
+      <div class="robo-marcas">{% for r in regionais_mg %}
+        <label class="robo-marca"><input type="checkbox" name="regional" value="{{ r.nome }}" {{ 'checked' if r.nome in robo_cfg.regionais }}>{{ r.nome }}<small>{{ r.cidades }}</small></label>{% endfor %}</div>
+      <label class="robo-mg"><input type="checkbox" name="todas_mg" value="1" {{ 'checked' if robo_cfg.todas_mg }}> Estudar <strong>MG inteira</strong> <span class="dim">(em avaliação — ignora as regionais marcadas)</span></label>
+    </details>
+    <button class="btn primario mt-s" type="submit">Salvar regionais</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Abas: Situação, Prospecção, Robô. O #âncora (das voltas dos formulários) escolhe a aba.
+(function () {
+  const abas = document.querySelectorAll('.abas-mod button');
+  const ancora = {potencial: 'prospeccao', alvos: 'prospeccao', pactua: 'prospeccao', robo: 'robo'};
+  function mostrar(nome) {
+    abas.forEach(x => x.classList.toggle('ativa', x.dataset.aba === nome));
+    document.querySelectorAll('.aba-corpo').forEach(c => c.hidden = c.dataset.aba !== nome);
+    document.documentElement.dataset.metasAba = nome;
+    try { localStorage.setItem('metas-aba', nome); } catch (e) {}
+  }
+  abas.forEach(b => b.addEventListener('click', () => { mostrar(b.dataset.aba); history.replaceState(null, '', location.pathname + location.search); }));
+  let inicial = ancora[location.hash.slice(1)];
+  if (!inicial) { try { inicial = localStorage.getItem('metas-aba'); } catch (e) {} }
+  if (inicial && document.querySelector('.abas-mod button[data-aba="' + inicial + '"]')) mostrar(inicial);
+})();
+function marcarTodos(botao) {
+  const caixas = [...botao.closest('.robo-grupo').querySelectorAll('.robo-marcas input')];
+  const marcar = caixas.some(c => !c.checked);
+  caixas.forEach(c => c.checked = marcar);
+  botao.textContent = marcar ? 'Desmarcar todos' : 'Marcar todos';
+}
+function semAcento(txt) { return txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function ordenarMunicipios(criterio) {
+  const [campo, sentido] = criterio.split('-');
+  const corpo = document.querySelector('#tabela-situacao tbody');
+  const linhas = [...corpo.querySelectorAll('tr')];
+  linhas.sort((a, b) => {
+    const r = campo === 'nome'
+      ? a.dataset.nome.localeCompare(b.dataset.nome, 'pt-BR')
+      : parseFloat(a.dataset[campo]) - parseFloat(b.dataset[campo]);
+    return sentido === 'desc' ? -r : r;
+  });
+  linhas.forEach(tr => corpo.appendChild(tr));
+  try { localStorage.setItem('metas-ordem', criterio); } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', () => {
+  let salva = null;
+  try { salva = localStorage.getItem('metas-ordem'); } catch (e) {}
+  const sel = document.getElementById('ordem');
+  if (sel && salva && sel.querySelector('option[value="' + salva + '"]')) { sel.value = salva; ordenarMunicipios(salva); }
+});
+function filtrarMunicipios(termo) {
+  const alvo = semAcento(termo);
+  let visiveis = 0;
+  document.querySelectorAll('#tabela-situacao tbody tr').forEach(tr => {
+    const nome = semAcento(tr.querySelector('td strong').textContent);
+    const mostra = !alvo || nome.includes(alvo);
+    tr.hidden = !mostra;
+    if (mostra) visiveis++;
+  });
+  document.getElementById('busca-vazia').hidden = visiveis > 0;
+}
+function copiarCidades(botao, id) {
+  const texto = document.getElementById(id).value;
+  const pronto = () => { botao.textContent = 'Copiado ✓'; };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(pronto);
+    return;
+  }
+  // Acesso pela rede (http sem localhost): a API de área de transferência não existe.
+  const area = document.createElement('textarea');
+  area.value = texto;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand('copy');
+  area.remove();
+  pronto();
+}
+</script>
+{% endblock %}
